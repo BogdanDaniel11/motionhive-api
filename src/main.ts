@@ -196,6 +196,9 @@ A comprehensive REST API for managing fitness training sessions, trainers, and c
       'https://admin.motionhive.fit',
       'https://admin-dev.motionhive.fit',
       'https://dev.admin.motionhive.fit',
+      // Capacitor WebView origins (mobile app): iOS / Android
+      'capacitor://localhost',
+      'https://localhost',
       /\.vercel\.app$/,
       /\.railway\.app$/,
       /\.netlify\.app$/,
@@ -213,6 +216,9 @@ A comprehensive REST API for managing fitness training sessions, trainers, and c
     'http://127.0.0.1:4203', // admin app
     'http://127.0.0.1:3000',
     'http://127.0.0.1:8100',
+    // Capacitor WebView origins (mobile app): iOS / Android
+    'capacitor://localhost',
+    'https://localhost',
   ];
 
   // Comma-separated extra origins for prod (e.g. tunnel hosts during a
