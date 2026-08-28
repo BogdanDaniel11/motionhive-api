@@ -212,6 +212,18 @@ export class SessionDiscoverService {
       model: SessionTemplate,
       attributes: [...PUBLIC_TEMPLATE_FIELDS],
       required: true,
+      // The venue the class normally runs at. `venueOverride` below only
+      // carries a per-occurrence change, so without this an ordinary session
+      // came back with no location at all — and where a session is is half of
+      // whether someone can go to it.
+      include: [
+        {
+          model: Venue,
+          as: 'venue',
+          attributes: [...PUBLIC_VENUE_FIELDS],
+          required: false,
+        },
+      ],
       where: {
         status: SessionTemplateStatus.Active,
         [Op.and]: andClauses,
@@ -302,19 +314,26 @@ export class SessionDiscoverService {
    * The return type widens to accommodate the plain-object blocked shape
    * because returning a partial Sequelize model risks toJSON() leaking
    * fields we redacted. The blocked shape is explicitly typed below.
+   *
+   * The scheduled-and-active filter is applied in `toPublicShape`, not here:
+   * this endpoint is also where every session notification lands, and the
+   * people who follow those links are the instructor and the people who
+   * booked. Filtering in the query 404'd them the moment the session ended —
+   * which made the post-session follow-up alert a link that could never work,
+   * and turned every reminder into a dead link the day after. Strangers still
+   * only see what is scheduled and live.
    */
   async getInstancePublic(
     instanceId: string,
     callerId: string | null,
   ): Promise<SessionInstance | BlockedInstanceShape> {
     const instance = await this.instanceModel.findOne({
-      where: { id: instanceId, status: SessionInstanceStatus.Scheduled },
+      where: { id: instanceId },
       include: [
         {
           model: SessionTemplate,
           attributes: [...PUBLIC_TEMPLATE_FIELDS, 'status'],
           required: true,
-          where: { status: SessionTemplateStatus.Active },
         },
         {
           model: User,
@@ -344,6 +363,22 @@ export class SessionDiscoverService {
     callerId: string | null,
   ): Promise<SessionInstance | BlockedInstanceShape> {
     const access = template.access;
+    const isLive =
+      instance.status === SessionInstanceStatus.Scheduled &&
+      template.status === SessionTemplateStatus.Active;
+
+    // A session that has finished, been cancelled, or whose template was
+    // archived is no longer on offer — but the people it happened to still
+    // need to reach it, because that is where their notifications point.
+    if (!isLive) {
+      if (!callerId) throw new NotFoundException('Session not found');
+      const wasThere =
+        callerId === instance.instructorId ||
+        (await this.accessService.wasEverParticipant(instance.id, callerId));
+      if (wasThere) return instance;
+      throw new NotFoundException('Session not found');
+    }
+
     if (access === SessionAccess.Open || access === SessionAccess.Free) {
       return instance;
     }

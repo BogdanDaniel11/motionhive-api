@@ -125,7 +125,6 @@ export class UserService {
       avatarUrl: string | null;
       language: string | null;
       timezone: string | null;
-      exerciseCatalogOptIn?: boolean;
       isActive?: boolean;
       isEmailVerified?: boolean;
       roles?: unknown;
@@ -144,7 +143,6 @@ export class UserService {
       avatarUrl: user.avatarUrl,
       language: user.language,
       timezone: user.timezone,
-      exerciseCatalogOptIn: user.exerciseCatalogOptIn ?? false,
     };
     if (options.slim) return base;
     return {
@@ -182,6 +180,7 @@ export class UserService {
       firstName: string | null;
       lastName: string | null;
       avatarUrl: string | null;
+      handle: string | null;
     }>
   > {
     const limit = Math.min(Math.max(params.limit ?? 10, 1), 20);
@@ -263,7 +262,14 @@ export class UserService {
     const rows = await this.userModel.findAll({
       where,
       include,
-      attributes: ['id', 'email', 'firstName', 'lastName', 'avatarUrl'],
+      attributes: [
+        'id',
+        'email',
+        'firstName',
+        'lastName',
+        'avatarUrl',
+        'handle',
+      ],
       limit,
       order: [
         ['firstName', 'ASC'],
@@ -277,6 +283,7 @@ export class UserService {
       firstName: u.firstName,
       lastName: u.lastName,
       avatarUrl: u.avatarUrl,
+      handle: u.handle ?? null,
     }));
   }
 
