@@ -35,6 +35,7 @@ import {
   ProgramStatus,
 } from './entities/workout.enums';
 import { CopyProgramWeekDto } from './dto/copy-program-week.dto';
+import { ReorderPrescribedRowsDto } from './dto/reorder-prescribed-rows.dto';
 import { CreatePrescribedExerciseDto } from './dto/create-prescribed-exercise.dto';
 import { CreatePrescribedSetDto } from './dto/create-prescribed-set.dto';
 import {
@@ -390,6 +391,93 @@ export class ProgramService {
    * week is removed first, so repeating a copy is idempotent rather than
    * additive.
    */
+  async reorderExercises(
+    programId: string,
+    workoutId: string,
+    dto: ReorderPrescribedRowsDto,
+    ownerId: string,
+  ): Promise<PrescribedExercise[]> {
+    await this._loadWorkout(programId, workoutId, ownerId);
+    const rows = await this.prescribedExerciseModel.findAll({
+      where: { programWorkoutId: workoutId },
+    });
+    await this._reorderRows(rows, dto, 'Exercise not found.');
+    return this.prescribedExerciseModel.findAll({
+      where: { programWorkoutId: workoutId },
+      order: [['orderIndex', 'ASC']],
+    });
+  }
+
+  async reorderSets(
+    programId: string,
+    workoutId: string,
+    exerciseId: string,
+    dto: ReorderPrescribedRowsDto,
+    ownerId: string,
+  ): Promise<PrescribedSet[]> {
+    await this._loadPrescribedExercise(
+      programId,
+      workoutId,
+      exerciseId,
+      ownerId,
+    );
+    const rows = await this.prescribedSetModel.findAll({
+      where: { prescribedExerciseId: exerciseId },
+    });
+    await this._reorderRows(rows, dto, 'Set not found.');
+    return this.prescribedSetModel.findAll({
+      where: { prescribedExerciseId: exerciseId },
+      order: [['orderIndex', 'ASC']],
+    });
+  }
+
+  /**
+   * Apply new indexes to a list of ordered rows in one transaction. Rows
+   * not mentioned keep their index; the combined layout is checked for
+   * two rows landing on the same index before anything is written.
+   */
+  private async _reorderRows(
+    rows: (PrescribedExercise | PrescribedSet)[],
+    dto: ReorderPrescribedRowsDto,
+    notFound: string,
+  ): Promise<void> {
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const seen = new Set<string>();
+    for (const item of dto.items) {
+      if (!byId.has(item.id)) throw new NotFoundException(notFound);
+      if (seen.has(item.id)) {
+        throw new BadRequestException(
+          'Each row may appear only once in items.',
+        );
+      }
+      seen.add(item.id);
+    }
+
+    const targetById = new Map(dto.items.map((i) => [i.id, i.orderIndex]));
+    const taken = new Set<number>();
+    for (const row of rows) {
+      const index = targetById.get(row.id) ?? row.orderIndex;
+      if (taken.has(index)) {
+        throw new ConflictException(
+          `Two rows would share position ${index + 1}.`,
+        );
+      }
+      taken.add(index);
+    }
+
+    const moved = dto.items.filter(
+      (i) => byId.get(i.id)!.orderIndex !== i.orderIndex,
+    );
+    if (!moved.length) return;
+    await this.sequelize.transaction(async (tx) => {
+      for (const item of moved) {
+        await byId
+          .get(item.id)!
+          .update({ orderIndex: item.orderIndex }, { transaction: tx });
+      }
+    });
+  }
+
   async copyWeek(
     programId: string,
     dto: CopyProgramWeekDto,

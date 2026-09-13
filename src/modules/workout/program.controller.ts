@@ -28,6 +28,7 @@ import { CreateProgramDto } from './dto/create-program.dto';
 import { CreateProgramWorkoutDto } from './dto/create-program-workout.dto';
 import { ListProgramsQueryDto } from './dto/list-programs.query.dto';
 import { CopyProgramWeekDto } from './dto/copy-program-week.dto';
+import { ReorderPrescribedRowsDto } from './dto/reorder-prescribed-rows.dto';
 import { ReorderProgramWorkoutsDto } from './dto/reorder-program-workouts.dto';
 import { UpdatePrescribedExerciseDto } from './dto/update-prescribed-exercise.dto';
 import { UpdatePrescribedSetDto } from './dto/update-prescribed-set.dto';
@@ -231,6 +232,27 @@ export class ProgramController {
     return this.programService.addExercise(id, workoutId, dto, req.user.id);
   }
 
+  // Before ':id/workouts/:workoutId/exercises/:exerciseId', like reorderWorkouts.
+  @Patch(':id/workouts/:workoutId/exercises/reorder')
+  @Throttle({ default: { limit: 200, ttl: 3_600_000 } })
+  @ApiEndpoint({
+    ...ProgramDocs.reorderExercises,
+    body: ReorderPrescribedRowsDto,
+  })
+  async reorderExercises(
+    @Request() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('workoutId', ParseUUIDPipe) workoutId: string,
+    @Body() dto: ReorderPrescribedRowsDto,
+  ) {
+    return this.programService.reorderExercises(
+      id,
+      workoutId,
+      dto,
+      req.user.id,
+    );
+  }
+
   @Patch(':id/workouts/:workoutId/exercises/:exerciseId')
   @ApiEndpoint({
     ...ProgramDocs.updateExercise,
@@ -281,6 +303,29 @@ export class ProgramController {
     @Body() dto: CreatePrescribedSetDto,
   ) {
     return this.programService.addSet(
+      id,
+      workoutId,
+      exerciseId,
+      dto,
+      req.user.id,
+    );
+  }
+
+  // Before '.../sets/:setId', for the same reason.
+  @Patch(':id/workouts/:workoutId/exercises/:exerciseId/sets/reorder')
+  @Throttle({ default: { limit: 200, ttl: 3_600_000 } })
+  @ApiEndpoint({
+    ...ProgramDocs.reorderSets,
+    body: ReorderPrescribedRowsDto,
+  })
+  async reorderSets(
+    @Request() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('workoutId', ParseUUIDPipe) workoutId: string,
+    @Param('exerciseId', ParseUUIDPipe) exerciseId: string,
+    @Body() dto: ReorderPrescribedRowsDto,
+  ) {
+    return this.programService.reorderSets(
       id,
       workoutId,
       exerciseId,

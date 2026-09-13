@@ -749,6 +749,85 @@ describe('ProgramService (smoke — not exhaustive)', () => {
     });
   });
 
+  describe('reorderExercises', () => {
+    const row = (id: string, orderIndex: number) => ({
+      id,
+      orderIndex,
+      update: jest.fn().mockResolvedValue(undefined),
+    });
+
+    it('writes only the rows that moved, in one transaction', async () => {
+      programModel.findByPk.mockResolvedValueOnce({ id: 'p-1', ownerId: 'me' });
+      workoutModel.findOne.mockResolvedValueOnce({
+        id: 'w-1',
+        programId: 'p-1',
+      });
+      const a = row('e-a', 0);
+      const b = row('e-b', 1);
+      prescribedExerciseModel.findAll
+        .mockResolvedValueOnce([a, b])
+        .mockResolvedValueOnce([b, a]);
+
+      await service.reorderExercises(
+        'p-1',
+        'w-1',
+        {
+          items: [
+            { id: 'e-a', orderIndex: 1 },
+            { id: 'e-b', orderIndex: 0 },
+          ],
+        },
+        'me',
+      );
+
+      expect(a.update).toHaveBeenCalledWith(
+        { orderIndex: 1 },
+        { transaction: fakeTx },
+      );
+      expect(b.update).toHaveBeenCalledWith(
+        { orderIndex: 0 },
+        { transaction: fakeTx },
+      );
+    });
+
+    it('404s on a row outside the workout', async () => {
+      programModel.findByPk.mockResolvedValueOnce({ id: 'p-1', ownerId: 'me' });
+      workoutModel.findOne.mockResolvedValueOnce({
+        id: 'w-1',
+        programId: 'p-1',
+      });
+      prescribedExerciseModel.findAll.mockResolvedValueOnce([row('e-a', 0)]);
+      await expect(
+        service.reorderExercises(
+          'p-1',
+          'w-1',
+          { items: [{ id: 'e-x', orderIndex: 0 }] },
+          'me',
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('409s when two rows would share an index', async () => {
+      programModel.findByPk.mockResolvedValueOnce({ id: 'p-1', ownerId: 'me' });
+      workoutModel.findOne.mockResolvedValueOnce({
+        id: 'w-1',
+        programId: 'p-1',
+      });
+      prescribedExerciseModel.findAll.mockResolvedValueOnce([
+        row('e-a', 0),
+        row('e-b', 1),
+      ]);
+      await expect(
+        service.reorderExercises(
+          'p-1',
+          'w-1',
+          { items: [{ id: 'e-a', orderIndex: 1 }] },
+          'me',
+        ),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
   // ─── Week copy (one transaction, target replaced) ────────────────
 
   describe('copyWeek', () => {

@@ -159,6 +159,23 @@ export const ProgramDocs = {
     ],
   } as ApiEndpointOptions,
 
+  reorderExercises: {
+    summary: 'Reorder the exercises of a workout (atomic)',
+    description:
+      'INSTRUCTOR only. Applies every new `orderIndex` in ONE transaction. ' +
+      'Rows omitted from `items` keep their index; the combined layout must ' +
+      'not place two rows at the same index (409 otherwise).',
+    auth: true,
+    roles: ['INSTRUCTOR'],
+  },
+  reorderSets: {
+    summary: 'Reorder the sets of a prescribed exercise (atomic)',
+    description:
+      'INSTRUCTOR only. Same contract as reorderExercises, for the sets ' +
+      'under one exercise.',
+    auth: true,
+    roles: ['INSTRUCTOR'],
+  },
   copyWeek: {
     summary: 'Copy one week of a program onto another (atomic)',
     description:
