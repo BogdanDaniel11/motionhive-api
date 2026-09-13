@@ -159,6 +159,16 @@ export const ProgramDocs = {
     ],
   } as ApiEndpointOptions,
 
+  copyWeek: {
+    summary: 'Copy one week of a program onto another (atomic)',
+    description:
+      'INSTRUCTOR only. Copies every workout in `fromWeekIndex` — with its ' +
+      'exercises and prescribed sets — into `toWeekIndex` in ONE ' +
+      'transaction. Anything already in the target week is removed first, ' +
+      'so repeating a copy replaces rather than duplicates. Exists so a ' +
+      'client never has to walk the tree with one request per row, which ' +
+      'was both slow and not atomic.',
+  },
   reorderWorkouts: {
     summary: 'Reposition workouts on the program calendar (atomic)',
     description:
@@ -214,7 +224,8 @@ export const ProgramDocs = {
     description:
       'INSTRUCTOR only. `exerciseId` must reference an exercise the ' +
       'caller can read (SYSTEM, their own, or PUBLIC by another). ' +
-      'Hides existence (404) for PRIVATE-by-another rows.',
+      'Hides existence (404) for PRIVATE-by-another rows. Pass ' +
+      '`defaultSets` to create that many empty sets with it atomically.',
     auth: true,
     responses: [
       { status: 201, description: 'Exercise slot added' },
