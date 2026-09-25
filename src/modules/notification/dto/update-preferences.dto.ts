@@ -14,15 +14,21 @@ import { NotificationCategory } from '../notification-categories';
 /**
  * Configurable channels we expose on the settings UI.
  *
- * In-app is always-on by design (the bell is the user's inbox); push
- * and SMS aren't implemented yet. We keep the payload to one channel
- * so we don't over-promise. When push ships we'll add `push: boolean`
- * here and the controller will accept it without further changes.
+ * In-app is always-on by design (the bell is the user's inbox), and
+ * SMS has no transport. Push is here because ten notification types
+ * default it on, and a channel a user cannot refuse is not a
+ * preference.
  */
 export class ConfigurableChannelPreferencesDto {
   @ApiProperty({ description: 'Send email for events in this category' })
   @IsBoolean()
   email: boolean;
+
+  @ApiProperty({
+    description: 'Send a push notification for events in this category',
+  })
+  @IsBoolean()
+  push: boolean;
 }
 
 /**

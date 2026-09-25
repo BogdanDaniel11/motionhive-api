@@ -53,6 +53,28 @@ export const envValidationSchema = Joi.object({
   // the cron producers are skipped.
   SCHEDULERS_ENABLED: Joi.string().valid('true', 'false').default('true'),
 
+  // Apple Push Notification service. All optional: without them the
+  // transport reports itself unconfigured and iOS pushes are skipped,
+  // the same posture as running without Redis. APNS_PRIVATE_KEY holds
+  // the .p8 contents (newlines escaped), not a path — Railway has no
+  // filesystem to keep a key file on.
+  APNS_KEY_ID: Joi.string().optional(),
+  APNS_TEAM_ID: Joi.string().optional(),
+  APNS_BUNDLE_ID: Joi.string().optional(),
+  APNS_PRIVATE_KEY: Joi.string().optional(),
+  // Sandbox by default. A token minted by a development build is
+  // rejected outright by the production host, so this must match the
+  // build that registered the device.
+  APNS_PRODUCTION: Joi.string().valid('true', 'false').default('false'),
+
+  // Firebase Cloud Messaging, for Android. Optional on the same terms
+  // as APNs: absent means Android pushes are skipped, not that the app
+  // fails to boot. Values come from a service-account key in the
+  // Firebase console under Project settings, Service accounts.
+  FIREBASE_PROJECT_ID: Joi.string().optional(),
+  FIREBASE_CLIENT_EMAIL: Joi.string().optional(),
+  FIREBASE_PRIVATE_KEY: Joi.string().optional(),
+
   // Bull Board admin UI — mounted at /admin/queues. Protected with
   // HTTP basic auth so we don't have to wire JWT into the Express
   // middleware that Bull Board ships with. Both vars must be set

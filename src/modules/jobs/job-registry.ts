@@ -69,6 +69,30 @@ export interface JobPayloads {
     ctaLabel?: string;
   };
 
+  /**
+   * Push one notification to every device a user has.
+   *
+   * Unlike `email_send` this carries a `userId` rather than the
+   * addresses: a user has N devices, tokens are revoked and replaced
+   * between a notification being raised and this running, and sending
+   * to one we already know is dead wastes an attempt. The worker reads
+   * the live device list instead.
+   */
+  'notifications.push_send': {
+    /** Receipt id — also the BullMQ jobId, so a re-enqueue dedupes. */
+    receiptId: string;
+    /** Whose devices to deliver to. */
+    userId: string;
+    /** Notification title, as stored on the notification row. */
+    title: string;
+    /** Body text, as stored on the notification row. */
+    body: string;
+    /** Deep-link payload forwarded to the device for tap routing. */
+    data?: Record<string, string>;
+    /** Replaces an earlier alert about the same thing instead of stacking. */
+    collapseKey?: string;
+  };
+
   // ── Sessions ────────────────────────────────────────────────────────
   // System-wide sweeps. No per-call payload — the worker queries the DB
   // for what's due at run time (resilient: a run catches up everything
@@ -150,6 +174,7 @@ export type JobPayload<K extends keyof JobPayloads> = JobPayloads[K];
  */
 export const ALL_JOB_NAMES: ReadonlyArray<keyof JobPayloads> = [
   'notifications.email_send',
+  'notifications.push_send',
   'sessions.reminder_dispatch',
   'sessions.status_transition',
   'sessions.generate_recurring',

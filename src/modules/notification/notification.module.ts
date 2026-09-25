@@ -4,6 +4,9 @@ import { NotificationService } from './notification.service';
 import { NotificationReceiptService } from './services/notification-receipt.service';
 import { NotificationPreferenceService } from './services/notification-preference.service';
 import { DeviceTokenService } from './services/device-token.service';
+import { ApnsTransport } from './push/apns.transport';
+import { FcmTransport } from './push/fcm.transport';
+import { PushDeliveryService } from './push/push-delivery.service';
 import { NotificationController } from './notification.controller';
 import { NotificationSettingsController } from './notification-settings.controller';
 import { DeviceController } from './device.controller';
@@ -55,12 +58,16 @@ import { RoleModule } from '../role/role.module';
     NotificationReceiptService,
     NotificationPreferenceService,
     DeviceTokenService,
+    ApnsTransport,
+    FcmTransport,
+    PushDeliveryService,
   ],
   exports: [
     NotificationService,
     NotificationReceiptService,
     NotificationPreferenceService,
     DeviceTokenService,
+    PushDeliveryService,
     SequelizeModule,
   ],
 })
