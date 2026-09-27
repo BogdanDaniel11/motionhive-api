@@ -28,6 +28,7 @@ import { CreateProgramDto } from './dto/create-program.dto';
 import { CreateProgramWorkoutDto } from './dto/create-program-workout.dto';
 import { ListProgramsQueryDto } from './dto/list-programs.query.dto';
 import { CopyProgramWeekDto } from './dto/copy-program-week.dto';
+import { CopyProgramDayDto } from './dto/copy-program-day.dto';
 import { ReorderPrescribedRowsDto } from './dto/reorder-prescribed-rows.dto';
 import { ReorderProgramWorkoutsDto } from './dto/reorder-program-workouts.dto';
 import { UpdatePrescribedExerciseDto } from './dto/update-prescribed-exercise.dto';
@@ -189,6 +190,19 @@ export class ProgramController {
     @Body() dto: CopyProgramWeekDto,
   ) {
     return this.programService.copyWeek(id, dto, req.user.id);
+  }
+
+  // Also before ':id/workouts/:workoutId' — a literal segment after
+  // `workouts/` must be declared ahead of the parameterised one.
+  @Post(':id/workouts/copy-day')
+  @Throttle({ default: { limit: 60, ttl: 3_600_000 } })
+  @ApiEndpoint({ ...ProgramDocs.copyDay, body: CopyProgramDayDto })
+  async copyDay(
+    @Request() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CopyProgramDayDto,
+  ) {
+    return this.programService.copyDay(id, dto, req.user.id);
   }
 
   @Patch(':id/workouts/:workoutId')

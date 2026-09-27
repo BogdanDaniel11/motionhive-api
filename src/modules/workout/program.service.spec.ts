@@ -936,4 +936,165 @@ describe('ProgramService (smoke — not exhaustive)', () => {
       );
     });
   });
+
+  describe('copyDay', () => {
+    const owned = () =>
+      programModel.findByPk.mockResolvedValueOnce({ id: 'p-1', ownerId: 'me' });
+
+    const sourceDay = {
+      name: 'Upper A',
+      notes: null,
+      dayIndex: 1,
+      sequenceNumber: 0,
+      phase: null,
+      estimatedDurationMinutes: 50,
+      exercises: [
+        {
+          exerciseId: 'ex-bench',
+          blockId: null,
+          supersetGroupId: null,
+          orderIndex: 0,
+          notes: null,
+          alternateExerciseId: null,
+          sets: [{ orderIndex: 0, setType: 'WORKING', targetRepsMin: 8 }],
+        },
+      ],
+    };
+
+    it('drops the source week from the targets rather than copying onto itself', async () => {
+      owned();
+      await expect(
+        service.copyDay(
+          'p-1',
+          { fromWeekIndex: 0, dayIndex: 1, toWeekIndexes: [0] },
+          'me',
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(workoutModel.findOne).not.toHaveBeenCalled();
+    });
+
+    it('rejects a day slot with nothing in it', async () => {
+      owned();
+      workoutModel.findOne.mockResolvedValueOnce(null);
+      await expect(
+        service.copyDay(
+          'p-1',
+          { fromWeekIndex: 0, dayIndex: 1, toWeekIndexes: [1] },
+          'me',
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(workoutModel.destroy).not.toHaveBeenCalled();
+    });
+
+    it('replaces only that day slot in each target week, in one transaction', async () => {
+      owned();
+      workoutModel.findOne.mockResolvedValueOnce(sourceDay);
+      workoutModel.create
+        .mockResolvedValueOnce({ id: 'w-d2' })
+        .mockResolvedValueOnce({ id: 'w-d3' });
+      prescribedExerciseModel.create
+        .mockResolvedValueOnce({ id: 'e-1' })
+        .mockResolvedValueOnce({ id: 'e-2' });
+
+      const copied = await service.copyDay(
+        'p-1',
+        { fromWeekIndex: 0, dayIndex: 1, toWeekIndexes: [2, 3] },
+        'me',
+      );
+
+      expect(copied.map((w) => w.id)).toEqual(['w-d2', 'w-d3']);
+
+      // The destroy is scoped to the one day — the rest of those weeks is
+      // untouched, which is the whole difference from copy-week.
+      expect(workoutModel.destroy).toHaveBeenCalledWith({
+        where: { programId: 'p-1', weekIndex: [2, 3], dayIndex: 1 },
+        transaction: fakeTx,
+      });
+
+      // Same slot in each target, never a different day.
+      expect(workoutModel.create).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ name: 'Upper A', weekIndex: 2, dayIndex: 1 }),
+        { transaction: fakeTx },
+      );
+      expect(workoutModel.create).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ name: 'Upper A', weekIndex: 3, dayIndex: 1 }),
+        { transaction: fakeTx },
+      );
+
+      // The tree travels with it, once per target.
+      expect(prescribedExerciseModel.create).toHaveBeenCalledTimes(2);
+      expect(prescribedSetModel.bulkCreate).toHaveBeenCalledTimes(2);
+    });
+
+    it('lands on a different day when asked, leaving the source day alone', async () => {
+      // "Monday's work, but on Thursday" — within the same week, so the
+      // source row must survive the destroy that clears the target slot.
+      owned();
+      workoutModel.findOne.mockResolvedValueOnce(sourceDay);
+      workoutModel.create.mockResolvedValueOnce({ id: 'w-thu' });
+      prescribedExerciseModel.create.mockResolvedValueOnce({ id: 'e-1' });
+
+      await service.copyDay(
+        'p-1',
+        { fromWeekIndex: 0, dayIndex: 1, toWeekIndexes: [0], toDayIndex: 3 },
+        'me',
+      );
+
+      // Only the target day is cleared — never the day being copied from.
+      expect(workoutModel.destroy).toHaveBeenCalledWith({
+        where: { programId: 'p-1', weekIndex: [0], dayIndex: 3 },
+        transaction: fakeTx,
+      });
+      expect(workoutModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({ weekIndex: 0, dayIndex: 3 }),
+        { transaction: fakeTx },
+      );
+    });
+
+    it('refuses a different day across several weeks', async () => {
+      // Ambiguous: it would mean "which day?" once per week.
+      owned();
+      await expect(
+        service.copyDay(
+          'p-1',
+          {
+            fromWeekIndex: 0,
+            dayIndex: 1,
+            toWeekIndexes: [1, 2],
+            toDayIndex: 3,
+          },
+          'me',
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(workoutModel.findOne).not.toHaveBeenCalled();
+    });
+
+    it('still refuses a copy onto the very same slot', async () => {
+      owned();
+      await expect(
+        service.copyDay(
+          'p-1',
+          { fromWeekIndex: 0, dayIndex: 1, toWeekIndexes: [0], toDayIndex: 1 },
+          'me',
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('ignores a week listed twice', async () => {
+      owned();
+      workoutModel.findOne.mockResolvedValueOnce(sourceDay);
+      workoutModel.create.mockResolvedValueOnce({ id: 'w-d2' });
+      prescribedExerciseModel.create.mockResolvedValueOnce({ id: 'e-1' });
+
+      await service.copyDay(
+        'p-1',
+        { fromWeekIndex: 0, dayIndex: 1, toWeekIndexes: [2, 2, 2] },
+        'me',
+      );
+
+      expect(workoutModel.create).toHaveBeenCalledTimes(1);
+    });
+  });
 });
