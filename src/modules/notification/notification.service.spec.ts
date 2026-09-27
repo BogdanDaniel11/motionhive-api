@@ -37,7 +37,11 @@ type NotificationStub = {
   type: string;
   title: string;
   body: string;
-  data: { screen: string; entityId?: string } | null;
+  data: {
+    screen: string;
+    entityId?: string;
+    queryParams?: Record<string, string>;
+  } | null;
   severity: NotificationSeverity;
   audienceType: NotificationAudienceType;
   audienceId: string | null;
@@ -174,6 +178,83 @@ describe('NotificationService', () => {
       expect(result.delivered.push).toBe('skipped:preference_off');
       expect(result.delivered.sms).toBe('skipped:preference_off');
       expect(result.deduped).toBe(false);
+    });
+
+    it('queues a push carrying the deep link the app routes on', async () => {
+      // SESSION_REMINDER_1H defaults to in-app + push and no email, so
+      // this exercises the push branch on its own.
+      notificationModel.findOne.mockResolvedValue(null);
+      notificationModel.create.mockResolvedValue(
+        makeNotificationRow({
+          type: NotificationType.SESSION_REMINDER_1H,
+          title: 'Session in 1 hour',
+          body: 'Today at 18:00',
+          data: {
+            screen: 'sessions',
+            entityId: 'sess-1',
+            queryParams: { tab: 'cancelled' },
+          },
+        }),
+      );
+      preferenceModel.findAll.mockResolvedValue([]);
+      userModel.findAll.mockResolvedValue([
+        { id: 'user-1', email: 'u1@test.io', firstName: 'U' },
+      ]);
+      receiptModel.findOrCreate.mockResolvedValue([makeReceiptRow(), true]);
+
+      const result = await service.notify({
+        userId: 'user-1',
+        type: NotificationType.SESSION_REMINDER_1H,
+        title: 'Session in 1 hour',
+        body: 'Today at 18:00',
+      });
+
+      expect(jobsService.enqueue).toHaveBeenCalledWith(
+        'notifications.push_send',
+        expect.objectContaining({
+          userId: 'user-1',
+          title: 'Session in 1 hour',
+          body: 'Today at 18:00',
+          // Both vendors only carry strings, so the nested queryParams
+          // object is flattened. The mobile deep-link resolver reads
+          // exactly these keys.
+          data: {
+            screen: 'sessions',
+            entityId: 'sess-1',
+            qp_tab: 'cancelled',
+          },
+        }),
+        expect.objectContaining({
+          jobId: expect.stringContaining('push_send.') as string,
+        }),
+      );
+      expect(result.delivered.push).toBe('queued');
+    });
+
+    it('reports push as unqueued rather than sent when there is no Redis', async () => {
+      notificationModel.findOne.mockResolvedValue(null);
+      notificationModel.create.mockResolvedValue(
+        makeNotificationRow({ type: NotificationType.SESSION_REMINDER_1H }),
+      );
+      preferenceModel.findAll.mockResolvedValue([]);
+      userModel.findAll.mockResolvedValue([
+        { id: 'user-1', email: 'u1@test.io', firstName: 'U' },
+      ]);
+      receiptModel.findOrCreate.mockResolvedValue([makeReceiptRow(), true]);
+      // What JobsService returns when REDIS_HOST is unset.
+      jobsService.enqueue.mockResolvedValue(null);
+
+      const result = await service.notify({
+        userId: 'user-1',
+        type: NotificationType.SESSION_REMINDER_1H,
+        title: 't',
+        body: 'b',
+      });
+
+      // Deliberately not a synchronous fallback like email has: a push
+      // needs credentials a dev machine will not have, and claiming it
+      // was sent would hide that.
+      expect(result.delivered.push).toBe('skipped:no_queue');
     });
 
     it('skips email when the user has no email on file', async () => {

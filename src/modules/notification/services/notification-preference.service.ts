@@ -19,15 +19,17 @@ import {
 } from '../notification-defaults';
 
 /**
- * Channels we expose on the settings page. We deliberately omit
- * in-app — it's always on by design (the bell is the user's inbox)
- * — push (not implemented yet) and sms (not implemented yet). When
- * push ships we'll add it back as its own column.
+ * Channels we expose on the settings page. In-app is deliberately
+ * omitted — it's always on by design (the bell is the user's inbox)
+ * — as is sms, which has no transport. Push is here because ten
+ * notification types default it on, and a channel a user cannot
+ * refuse is not a preference.
  */
-export type ConfigurableChannel = 'email';
+export type ConfigurableChannel = 'email' | 'push';
 
 export interface ConfigurableChannelPreferences {
   email: boolean;
+  push: boolean;
 }
 
 /**
@@ -92,14 +94,17 @@ export class NotificationPreferenceService {
       const resolved = types.map((type) =>
         resolveChannels(type, overrideByType.get(type) ?? null),
       );
+      // A category toggle reads "on" when any type in it is on, so
+      // turning it off is unambiguous and turning it on is inclusive.
       const anyEmail = resolved.some((r) => r.email);
+      const anyPush = resolved.some((r) => r.push);
       const isCustomized = types.some((type) => overrideByType.has(type));
 
       return {
         category,
         label: meta.label,
         description: meta.description,
-        channels: { email: anyEmail },
+        channels: { email: anyEmail, push: anyPush },
         isCustomized,
       };
     });
@@ -138,15 +143,16 @@ export class NotificationPreferenceService {
     await this.sequelize.transaction(async (tx) => {
       for (const update of updates) {
         for (const type of CATEGORY_TO_TYPES[update.category]) {
-          // Merge the new email value over the existing per-type
-          // channels, falling back to the system default for the
-          // channels we don't manage here (in_app/push/sms).
+          // Merge the managed channels over the existing per-type
+          // values, falling back to the system default for the ones we
+          // don't manage here (in_app/sms).
           const existingRow = existingByType.get(type);
           const base =
             existingRow?.channels ?? NOTIFICATION_DEFAULTS[type] ?? {};
           const next: ChannelPreferences = {
             ...base,
             email: update.channels.email,
+            push: update.channels.push,
           };
           if (existingRow) {
             await existingRow.update({ channels: next }, { transaction: tx });

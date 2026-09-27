@@ -213,6 +213,14 @@ A comprehensive REST API for managing fitness training sessions, trainers, and c
     'http://127.0.0.1:4203', // admin app
     'http://127.0.0.1:3000',
     'http://127.0.0.1:8100',
+    // The Capacitor app is not served over http — its WebView has its own
+    // origin, and without these the browser discards every reply as
+    // cross-origin. The symptom is not a network error: the request
+    // succeeds, the response is thrown away, and a login looks like wrong
+    // credentials.
+    'capacitor://localhost', // iOS
+    'http://localhost', // Android
+    'ionic://localhost', // iOS, Capacitor 2 and earlier
   ];
 
   // Comma-separated extra origins for prod (e.g. tunnel hosts during a

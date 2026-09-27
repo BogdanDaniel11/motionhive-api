@@ -294,10 +294,32 @@ export class NotificationService {
       }
     }
 
-    // ── push / sms ── Stubbed until those workers ship.
-    delivered.push = channels.push
-      ? 'skipped:not_implemented'
-      : 'skipped:preference_off';
+    // ── push ──
+    // Enqueued like email. The worker reads the user's live device
+    // list rather than taking it from the payload, because a token can
+    // be revoked between here and delivery.
+    if (!channels.push) {
+      delivered.push = 'skipped:preference_off';
+    } else {
+      const enqueued = await this.jobs.enqueue(
+        'notifications.push_send',
+        {
+          receiptId: receipt.id,
+          userId,
+          title: notification.title,
+          body: notification.body,
+          data: toPushData(notification.data),
+          collapseKey: notification.fingerprint ?? undefined,
+        },
+        { jobId: `push_send.${receipt.id}` },
+      );
+      // No Redis (local dev). Unlike email there is no synchronous
+      // fallback: a push needs credentials a dev machine will not
+      // have, and pretending otherwise would hide the real state.
+      delivered.push = enqueued === null ? 'skipped:no_queue' : 'queued';
+    }
+
+    // ── sms ── Stubbed until that worker ships.
     delivered.sms = channels.sms
       ? 'skipped:not_implemented'
       : 'skipped:preference_off';
@@ -334,4 +356,30 @@ export class NotificationService {
     }
     return url;
   }
+}
+
+/**
+ * Flatten a deep-link payload for transport.
+ *
+ * Both APNs and FCM restrict custom keys to strings, so the nested
+ * `queryParams` object is folded into flat `qp_*` keys. The mobile
+ * app's deep-link resolver reads `screen`, `entityId` and the query
+ * params, which is exactly what survives this.
+ */
+function toPushData(
+  data: NotificationData | null,
+): Record<string, string> | undefined {
+  if (!data?.screen) return undefined;
+
+  const flat: Record<string, string> = { screen: data.screen };
+  if (data.entityId) flat.entityId = data.entityId;
+
+  const qp = data.queryParams;
+  if (qp && typeof qp === 'object') {
+    for (const [key, value] of Object.entries(qp)) {
+      if (typeof value === 'string') flat[`qp_${key}`] = value;
+    }
+  }
+
+  return flat;
 }

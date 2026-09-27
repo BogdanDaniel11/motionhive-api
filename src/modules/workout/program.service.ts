@@ -35,6 +35,7 @@ import {
   ProgramStatus,
 } from './entities/workout.enums';
 import { CopyProgramWeekDto } from './dto/copy-program-week.dto';
+import { CopyProgramDayDto } from './dto/copy-program-day.dto';
 import { ReorderPrescribedRowsDto } from './dto/reorder-prescribed-rows.dto';
 import { CreatePrescribedExerciseDto } from './dto/create-prescribed-exercise.dto';
 import { CreatePrescribedSetDto } from './dto/create-prescribed-set.dto';
@@ -513,58 +514,165 @@ export class ProgramService {
 
       const copied: ProgramWorkout[] = [];
       for (const w of source) {
-        const newWorkout = await this.workoutModel.create(
-          {
+        copied.push(
+          await this._cloneWorkoutInto(
+            w,
             programId,
-            name: w.name,
-            notes: w.notes,
-            weekIndex: dto.toWeekIndex,
-            dayIndex: w.dayIndex,
-            sequenceNumber: w.sequenceNumber,
-            phase: w.phase,
-            estimatedDurationMinutes: w.estimatedDurationMinutes,
-          },
-          { transaction: tx },
+            dto.toWeekIndex,
+            w.dayIndex,
+            tx,
+          ),
         );
-
-        for (const ex of w.exercises ?? []) {
-          const newExercise = await this.prescribedExerciseModel.create(
-            {
-              programWorkoutId: newWorkout.id,
-              exerciseId: ex.exerciseId,
-              blockId: ex.blockId,
-              supersetGroupId: ex.supersetGroupId,
-              orderIndex: ex.orderIndex,
-              notes: ex.notes,
-              alternateExerciseId: ex.alternateExerciseId,
-            },
-            { transaction: tx },
-          );
-
-          const sets = (ex.sets ?? []).map((st) => ({
-            prescribedExerciseId: newExercise.id,
-            orderIndex: st.orderIndex,
-            setType: st.setType,
-            targetRepsMin: st.targetRepsMin,
-            targetRepsMax: st.targetRepsMax,
-            targetWeightKg: st.targetWeightKg,
-            targetWeightPercent1rm: st.targetWeightPercent1rm,
-            targetDurationSeconds: st.targetDurationSeconds,
-            targetDistanceMeters: st.targetDistanceMeters,
-            targetRpe: st.targetRpe,
-            targetRir: st.targetRir,
-            restAfterSeconds: st.restAfterSeconds,
-            tempo: st.tempo,
-            notes: st.notes,
-          }));
-          if (sets.length) {
-            await this.prescribedSetModel.bulkCreate(sets, { transaction: tx });
-          }
-        }
-        copied.push(newWorkout);
       }
       return copied;
     });
+  }
+
+  /**
+   * Copy one day's training into the same day slot of other weeks.
+   *
+   * "Make Monday the same for weeks 2 to 5" — the day-level twin of
+   * `copyWeek`, and multi-target for the same reason: one request per week
+   * would walk the same tree repeatedly and trip the throttle.
+   *
+   * Replaces whatever occupies the target slot, exactly as `copyWeek`
+   * replaces a week. One rule for both, so a coach never has to remember
+   * which verb merges and which overwrites — the UI states the count of
+   * days it is about to replace before committing.
+   */
+  async copyDay(
+    programId: string,
+    dto: CopyProgramDayDto,
+    ownerId: string,
+  ): Promise<ProgramWorkout[]> {
+    await this._loadProgram(programId, ownerId);
+
+    const toDayIndex = dto.toDayIndex ?? dto.dayIndex;
+    const movingDay = toDayIndex !== dto.dayIndex;
+
+    // Landing on a different day is only meaningful for one week: across a
+    // block it would mean "which day?" once per week, which is a different
+    // feature. Rejected rather than guessed at.
+    if (movingDay && dto.toWeekIndexes.length > 1) {
+      throw new BadRequestException(
+        'Copying onto a different day works with one target week at a time.',
+      );
+    }
+
+    // Same slot is a copy onto itself; a different day in the same week is a
+    // real target, so the source week only drops out when the day matches.
+    const targets = [...new Set(dto.toWeekIndexes)].filter(
+      (w) => movingDay || w !== dto.fromWeekIndex,
+    );
+    if (!targets.length) {
+      throw new BadRequestException(
+        'Pick at least one other week to copy into.',
+      );
+    }
+
+    const source = await this.workoutModel.findOne({
+      where: {
+        programId,
+        weekIndex: dto.fromWeekIndex,
+        dayIndex: dto.dayIndex,
+      },
+      include: [
+        {
+          model: PrescribedExercise,
+          as: 'exercises',
+          required: false,
+          include: [{ model: PrescribedSet, as: 'sets', required: false }],
+        },
+      ],
+    });
+    if (!source) {
+      throw new BadRequestException('That day has nothing to copy.');
+    }
+
+    return this.sequelize.transaction(async (tx) => {
+      // CASCADE on the FK takes the nested exercises and sets with them.
+      await this.workoutModel.destroy({
+        where: { programId, weekIndex: targets, dayIndex: toDayIndex },
+        transaction: tx,
+      });
+
+      const copied: ProgramWorkout[] = [];
+      for (const weekIndex of targets) {
+        copied.push(
+          await this._cloneWorkoutInto(
+            source,
+            programId,
+            weekIndex,
+            toDayIndex,
+            tx,
+          ),
+        );
+      }
+      return copied;
+    });
+  }
+
+  /**
+   * Deep-copies one workout — its exercises and their sets — into a given
+   * week/day slot. Shared by `copyWeek` and `copyDay` so the two can never
+   * drift on which columns travel with a copy.
+   */
+  private async _cloneWorkoutInto(
+    source: ProgramWorkout,
+    programId: string,
+    weekIndex: number,
+    dayIndex: number,
+    tx: Transaction,
+  ): Promise<ProgramWorkout> {
+    const newWorkout = await this.workoutModel.create(
+      {
+        programId,
+        name: source.name,
+        notes: source.notes,
+        weekIndex,
+        dayIndex,
+        sequenceNumber: source.sequenceNumber,
+        phase: source.phase,
+        estimatedDurationMinutes: source.estimatedDurationMinutes,
+      },
+      { transaction: tx },
+    );
+
+    for (const ex of source.exercises ?? []) {
+      const newExercise = await this.prescribedExerciseModel.create(
+        {
+          programWorkoutId: newWorkout.id,
+          exerciseId: ex.exerciseId,
+          blockId: ex.blockId,
+          supersetGroupId: ex.supersetGroupId,
+          orderIndex: ex.orderIndex,
+          notes: ex.notes,
+          alternateExerciseId: ex.alternateExerciseId,
+        },
+        { transaction: tx },
+      );
+
+      const sets = (ex.sets ?? []).map((st) => ({
+        prescribedExerciseId: newExercise.id,
+        orderIndex: st.orderIndex,
+        setType: st.setType,
+        targetRepsMin: st.targetRepsMin,
+        targetRepsMax: st.targetRepsMax,
+        targetWeightKg: st.targetWeightKg,
+        targetWeightPercent1rm: st.targetWeightPercent1rm,
+        targetDurationSeconds: st.targetDurationSeconds,
+        targetDistanceMeters: st.targetDistanceMeters,
+        targetRpe: st.targetRpe,
+        targetRir: st.targetRir,
+        restAfterSeconds: st.restAfterSeconds,
+        tempo: st.tempo,
+        notes: st.notes,
+      }));
+      if (sets.length) {
+        await this.prescribedSetModel.bulkCreate(sets, { transaction: tx });
+      }
+    }
+    return newWorkout;
   }
 
   async create(

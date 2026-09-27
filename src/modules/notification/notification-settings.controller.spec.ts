@@ -45,11 +45,11 @@ describe('NotificationSettingsController', () => {
     const items = [
       {
         category: NotificationCategory.Payments,
-        channels: { email: false },
+        channels: { email: false, push: false },
       },
       {
         category: NotificationCategory.Sessions,
-        channels: { email: true },
+        channels: { email: true, push: true },
       },
     ];
     const result = await controller.update(mockReq('user-1'), { items });
