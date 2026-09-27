@@ -295,16 +295,47 @@ export class GroupService {
    *
    * Uses a targeted membership check instead of loading all members.
    */
-  async getById(groupId: string, userId: string): Promise<Group> {
-    const group = await this.groupModel.findByPk(groupId);
+  /**
+   * One group, as the caller sees it.
+   *
+   * `myRole` rides along because the membership row is already loaded to
+   * authorise the read — the client would otherwise have to derive it by
+   * searching the paginated member list, which silently misreads a
+   * moderator who sits past the first page as a non-member and strips
+   * their controls. The role is authoritative here and costs nothing.
+   */
+  async getById(
+    groupId: string,
+    userId: string,
+  ): Promise<Group & { myRole: GroupMemberRole; memberCount: number }> {
+    const group = await this.groupModel.findByPk(groupId, {
+      // Every list endpoint attaches this; the single-group read did not, so
+      // a detail screen rendered "0 members" for a group the list it came
+      // from had just counted correctly.
+      attributes: {
+        include: [
+          [
+            literal(
+              '(SELECT COUNT(*)::int FROM group_member WHERE group_member.group_id = "Group"."id" AND group_member.left_at IS NULL)',
+            ),
+            'memberCount',
+          ],
+        ],
+      },
+    });
 
     if (!group) {
       throw new NotFoundException('Group not found');
     }
 
-    await this.assertMember(groupId, userId);
+    const member = await this.assertMember(groupId, userId);
 
-    return group;
+    // `toJSON` first: spreading a Sequelize instance copies its internals,
+    // not its columns.
+    return { ...group.toJSON(), myRole: member.role } as Group & {
+      myRole: GroupMemberRole;
+      memberCount: number;
+    };
   }
 
   /**

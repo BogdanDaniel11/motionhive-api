@@ -64,6 +64,13 @@ export interface FeedItem {
     firstName: string;
     lastName: string;
     avatarUrl: string | null;
+    /**
+     * How the FE addresses a profile (`/@<handle>`). Nullable because an
+     * account can exist without one; a name with no handle simply is not a
+     * link. Comments already carried this — posts projected it away, so the
+     * same author was tappable under a comment and inert above it.
+     */
+    handle: string | null;
   } | null;
   /**
    * Optional. Populated by the cross-group feed (`getMyFeed`) so the FE
@@ -964,6 +971,7 @@ export class PostService {
             firstName: post.author.firstName,
             lastName: post.author.lastName,
             avatarUrl: post.author.avatarUrl,
+            handle: post.author.handle,
           }
         : null,
       group:
@@ -1017,6 +1025,7 @@ export class PostService {
             firstName: post.author.firstName,
             lastName: post.author.lastName,
             avatarUrl: post.author.avatarUrl,
+            handle: post.author.handle,
           }
         : null,
     };
