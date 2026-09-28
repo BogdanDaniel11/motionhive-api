@@ -64,6 +64,9 @@ import { UpdateProgramWorkoutDto } from './dto/update-program-workout.dto';
  */
 const WEEK_PARK_OFFSET = 10_000;
 
+/** Turning `duration_days` back into whole weeks. */
+const DAYS_PER_WEEK = 7;
+
 /**
  * ProgramService — nested CRUD across the program-authoring tree
  * (program → program_workout → prescribed_exercise → prescribed_set).
@@ -788,6 +791,53 @@ export class ProgramService {
     }
   }
 
+  /**
+   * Drop the weeks a shortened program no longer has room for.
+   *
+   * Refused outright while anyone is mid-program: their `assigned_*` rows
+   * are their own copies and survive, but the master they were cut from
+   * would no longer contain the weeks they are still training, so the
+   * coach's view of the plan and the client's would disagree.
+   */
+  private async _shrinkToDuration(
+    program: Program,
+    durationDays: number | null | undefined,
+  ): Promise<void> {
+    if (!durationDays) return;
+    const weeks = Math.ceil(durationDays / DAYS_PER_WEEK);
+
+    const doomed = await this.workoutModel.count({
+      where: { programId: program.id, weekIndex: { [Op.gte]: weeks } },
+    });
+    if (doomed === 0) return;
+
+    const live = await this.assignmentModel.count({
+      where: {
+        masterProgramId: program.id,
+        status: {
+          [Op.in]: [
+            ProgramAssignmentStatus.Pending,
+            ProgramAssignmentStatus.Active,
+            ProgramAssignmentStatus.Paused,
+          ],
+        },
+      },
+    });
+    if (live > 0) {
+      throw new ConflictException(
+        `${live} ${live === 1 ? 'client is' : 'clients are'} on this program, ` +
+          `so it cannot be shortened to ${weeks} ${weeks === 1 ? 'week' : 'weeks'} — ` +
+          `that would drop ${doomed} ${doomed === 1 ? 'day' : 'days'} they are still training. ` +
+          'Finish or cancel their assignments first.',
+      );
+    }
+
+    // Exercises and sets cascade from program_workout.
+    await this.workoutModel.destroy({
+      where: { programId: program.id, weekIndex: { [Op.gte]: weeks } },
+    });
+  }
+
   async update(
     id: string,
     dto: UpdateProgramDto,
@@ -800,6 +850,13 @@ export class ProgramService {
         'Nested exercises are only supported on single-workout programs. ' +
           'Edit a multi-week program through its workout endpoints.',
       );
+    }
+
+    // Shortening a program is a real edit, not a relabel: the weeks that
+    // no longer fit have to go, or `duration_days` would claim a length the
+    // workouts contradict and every client's end date would be wrong.
+    if (dto.durationDays !== undefined && !program.isSingleWorkout) {
+      await this._shrinkToDuration(program, dto.durationDays);
     }
 
     // A routine's exercise list is edited as a whole, so the tree is

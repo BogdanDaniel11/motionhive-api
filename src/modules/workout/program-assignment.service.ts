@@ -180,6 +180,10 @@ export class ProgramAssignmentService {
       throw new NotFoundException('Client not found.');
     }
 
+    // Resolved before the transaction opens: a day-count mismatch is a bad
+    // request and should be refused before anything is written.
+    const dayMap = this.buildDayMap(program.workouts ?? [], dto.daysOfWeek);
+
     const created = await this.sequelize.transaction(async (tx) => {
       const assignment = await this.assignmentModel.create(
         {
@@ -190,14 +194,14 @@ export class ProgramAssignmentService {
           programNameSnapshot: program.name,
           status: ProgramAssignmentStatus.Active,
           startDate: dto.startDate,
-          endDate: this.computeEndDate(program, dto.startDate),
+          endDate: this.computeEndDate(program, dto.startDate, dayMap),
           completionPercent: 0,
           notes: dto.notes?.trim() || null,
         },
         { transaction: tx },
       );
 
-      await this.cloneTree(assignment.id, program, dto.startDate, tx);
+      await this.cloneTree(assignment.id, program, dto.startDate, tx, dayMap);
       return assignment;
     });
 
@@ -954,6 +958,7 @@ export class ProgramAssignmentService {
     program: Program,
     startDate: string,
     tx: Transaction,
+    dayMap?: Map<number, number> | null,
   ): Promise<void> {
     const workouts = program.workouts ?? [];
     if (workouts.length === 0) {
@@ -970,11 +975,16 @@ export class ProgramAssignmentService {
           name: pw.name,
           notes: pw.notes,
           weekIndex: pw.weekIndex,
-          dayIndex: pw.dayIndex,
+          // The slot the client sees, not the one the program was drawn on.
+          dayIndex: dayMap?.get(pw.dayIndex) ?? pw.dayIndex,
           sequenceNumber: pw.sequenceNumber,
           phase: pw.phase,
           estimatedDurationMinutes: pw.estimatedDurationMinutes,
-          scheduledDate: this.computeScheduledDate(startDate, pw),
+          scheduledDate: this.computeScheduledDate(
+            startDate,
+            pw,
+            dayMap ?? undefined,
+          ),
           status: null,
         },
         { transaction: tx },
@@ -1039,14 +1049,87 @@ export class ProgramAssignmentService {
    * day per (week*7 + day). We keep the math in pure string-date
    * space so timezone is not a concern (`DATEONLY` storage).
    */
-  private computeScheduledDate(startDate: string, pw: ProgramWorkout): string {
-    const dayOffset = pw.weekIndex * 7 + pw.dayIndex;
-    return this.addDays(startDate, dayOffset);
+  private computeScheduledDate(
+    startDate: string,
+    pw: ProgramWorkout,
+    dayMap?: ReadonlyMap<number, number>,
+  ): string {
+    // Without a mapping, days land by counting forward from the start —
+    // the original behaviour, kept for every assignment that does not ask
+    // for anything else.
+    if (!dayMap) {
+      return this.addDays(startDate, pw.weekIndex * 7 + pw.dayIndex);
+    }
+
+    // With one, the program's day slot names a weekday instead. Week 0 is
+    // the week containing `startDate`, so its Monday anchors the grid the
+    // same way `_expandWeekdays` does.
+    const targetDayIndex = dayMap.get(pw.dayIndex);
+    if (targetDayIndex === undefined) {
+      return this.addDays(startDate, pw.weekIndex * 7 + pw.dayIndex);
+    }
+    const daysSinceMonday = this._isoWeekdayToDayIndex(startDate);
+    const mondayOfStartWeek = this.addDays(startDate, -daysSinceMonday);
+    return this.addDays(mondayOfStartWeek, pw.weekIndex * 7 + targetDayIndex);
   }
 
-  private computeEndDate(program: Program, startDate: string): string | null {
+  /**
+   * Maps a program's own day slots onto the weekdays a coach picked.
+   *
+   * The program's distinct days, in order, pair with `daysOfWeek` in order:
+   * a Mon/Wed/Fri program assigned to Tue/Thu/Sat keeps its shape and moves
+   * wholesale. Returns null when nothing was asked for.
+   *
+   * The counts must match. Folding three training days into two would have
+   * to drop or double up a day, and either choice is one the coach should
+   * make rather than discover.
+   */
+  private buildDayMap(
+    workouts: ProgramWorkout[],
+    daysOfWeek?: number[],
+  ): Map<number, number> | null {
+    if (!daysOfWeek?.length) return null;
+
+    const programDays = [...new Set(workouts.map((w) => w.dayIndex))].sort(
+      (a, b) => a - b,
+    );
+    const chosen = [...new Set(daysOfWeek)].sort((a, b) => a - b);
+
+    if (chosen.length !== programDays.length) {
+      throw new BadRequestException(
+        `This program trains on ${programDays.length} ${
+          programDays.length === 1 ? 'day' : 'days'
+        } a week. Pick exactly that many.`,
+      );
+    }
+
+    // ISO 1=Mon..7=Sun on the way in; `dayIndex` is 0=Mon..6=Sun.
+    return new Map(programDays.map((d, i) => [d, chosen[i] - 1]));
+  }
+
+  private computeEndDate(
+    program: Program,
+    startDate: string,
+    dayMap?: Map<number, number> | null,
+  ): string | null {
+    // The work decides the window. Counting `durationDays` forward instead
+    // would end the plan before its own last session whenever the declared
+    // length disagrees with the weeks that actually hold workouts — the
+    // client would still have those sessions scheduled past their end date.
+    const workouts = program.workouts ?? [];
+    if (workouts.length) {
+      const last = workouts
+        .map((pw) =>
+          this.computeScheduledDate(startDate, pw, dayMap ?? undefined),
+        )
+        .sort()
+        .at(-1);
+      if (last) return last;
+    }
+
+    // Nothing built yet: fall back to the declared length so a shell
+    // program assigned early still has a window.
     if (!program.durationDays) return null;
-    // End on the final day of the program.
     return this.addDays(startDate, program.durationDays - 1);
   }
 
