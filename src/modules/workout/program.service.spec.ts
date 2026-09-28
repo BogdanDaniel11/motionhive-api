@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/sequelize';
+import { Op } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 
@@ -52,6 +53,7 @@ describe('ProgramService (smoke — not exhaustive)', () => {
     findAll: jest.fn(),
     create: jest.fn(),
     destroy: jest.fn(),
+    count: jest.fn(),
     max: jest.fn(),
   };
   const prescribedExerciseModel = {
@@ -362,6 +364,56 @@ describe('ProgramService (smoke — not exhaustive)', () => {
         ]),
         expect.anything(),
       );
+    });
+
+    it('drops the weeks a shortened program no longer has room for', async () => {
+      programModel.findByPk.mockResolvedValueOnce({
+        id: 'p-3',
+        ownerId: 'me',
+        isSingleWorkout: false,
+        update: jest.fn().mockResolvedValue(undefined),
+      });
+      workoutModel.count.mockResolvedValueOnce(2); // week 3+ holds work
+      assignmentModel.count.mockResolvedValueOnce(0); // nobody on it
+
+      await service.update('p-3', { durationDays: 21 }, 'me');
+
+      // 21 days = 3 weeks, so weeks 3 and up go.
+      expect(workoutModel.destroy).toHaveBeenCalledWith({
+        where: { programId: 'p-3', weekIndex: { [Op.gte]: 3 } },
+      });
+    });
+
+    it('refuses to shorten a program clients are still training', async () => {
+      programModel.findByPk.mockResolvedValueOnce({
+        id: 'p-4',
+        ownerId: 'me',
+        isSingleWorkout: false,
+        update: jest.fn(),
+      });
+      workoutModel.count.mockResolvedValueOnce(3);
+      assignmentModel.count.mockResolvedValueOnce(1);
+
+      await expect(
+        service.update('p-4', { durationDays: 7 }, 'me'),
+      ).rejects.toThrow(ConflictException);
+      expect(workoutModel.destroy).not.toHaveBeenCalled();
+    });
+
+    it('leaves the tree alone when the new length still covers it', async () => {
+      programModel.findByPk.mockResolvedValueOnce({
+        id: 'p-5',
+        ownerId: 'me',
+        isSingleWorkout: false,
+        update: jest.fn().mockResolvedValue(undefined),
+      });
+      workoutModel.count.mockResolvedValueOnce(0); // nothing past the new end
+
+      await service.update('p-5', { durationDays: 84 }, 'me');
+
+      // No roster check needed when nothing would be lost.
+      expect(assignmentModel.count).not.toHaveBeenCalled();
+      expect(workoutModel.destroy).not.toHaveBeenCalled();
     });
 
     it('refuses a nested edit on a multi-week program', async () => {

@@ -301,7 +301,9 @@ describe('ProgramAssignmentService (smoke — not exhaustive)', () => {
           masterProgramId: 'prog-1',
           programNameSnapshot: 'Tiny program',
           startDate: '2026-06-09',
-          endDate: '2026-06-22', // 2 weeks * 7 - 1 = day 13 → 9 + 13 = 22
+          // The work decides the window, not `durationDays`: the program
+          // declares 2 weeks but holds one session, on the start date.
+          endDate: '2026-06-09',
           status: ProgramAssignmentStatus.Active,
         }),
         { transaction: fakeTx },
@@ -442,6 +444,40 @@ describe('ProgramAssignmentService (smoke — not exhaustive)', () => {
         { name: 'Lower', dayIndex: 2, date: '2026-06-11' },
         { name: 'Upper', dayIndex: 0, date: '2026-06-16' },
       ]);
+    });
+
+    it('ends on the last session even when the program under-declares its length', async () => {
+      // The bug this guards: `durationDays` was a free-form hint nothing
+      // validated, but the end date counted it forward as fact. A program
+      // claiming one week while holding two left the client with sessions
+      // scheduled past the date their own plan said it ended.
+      const under = twoDayProgram();
+      under.durationDays = 7;
+      programModel.findByPk.mockResolvedValueOnce(under);
+      instructorClientModel.findOne.mockResolvedValueOnce({
+        id: 'ic-1',
+        status: InstructorClientStatus.ACTIVE,
+      });
+      userModel.findByPk.mockResolvedValueOnce({
+        id: 'c-1',
+        firstName: 'Cli',
+        lastName: 'Ent',
+      });
+      assignmentModel.create.mockResolvedValueOnce({ id: 'pa-1' });
+      assignedWorkoutModel.create.mockResolvedValue({ id: 'aw-x' });
+
+      await service.assignProgramToClient(me, 'Coach Co.', {
+        programId: 'prog-1',
+        clientId: 'c-1',
+        startDate: '2026-06-09',
+      });
+
+      // Week 1's session is on the 16th; the declared week would have
+      // ended it on the 15th.
+      expect(assignmentModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({ endDate: '2026-06-16' }),
+        expect.anything(),
+      );
     });
 
     it('ends the window on the last session it actually scheduled', async () => {

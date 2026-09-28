@@ -1112,19 +1112,24 @@ export class ProgramAssignmentService {
     startDate: string,
     dayMap?: Map<number, number> | null,
   ): string | null {
-    // Remapped days move the last session, so the window has to follow it
-    // rather than counting the program's nominal length forward.
-    if (dayMap) {
-      const workouts = program.workouts ?? [];
-      if (!workouts.length) return null;
+    // The work decides the window. Counting `durationDays` forward instead
+    // would end the plan before its own last session whenever the declared
+    // length disagrees with the weeks that actually hold workouts — the
+    // client would still have those sessions scheduled past their end date.
+    const workouts = program.workouts ?? [];
+    if (workouts.length) {
       const last = workouts
-        .map((pw) => this.computeScheduledDate(startDate, pw, dayMap))
+        .map((pw) =>
+          this.computeScheduledDate(startDate, pw, dayMap ?? undefined),
+        )
         .sort()
         .at(-1);
-      return last ?? null;
+      if (last) return last;
     }
+
+    // Nothing built yet: fall back to the declared length so a shell
+    // program assigned early still has a window.
     if (!program.durationDays) return null;
-    // End on the final day of the program.
     return this.addDays(startDate, program.durationDays - 1);
   }
 
