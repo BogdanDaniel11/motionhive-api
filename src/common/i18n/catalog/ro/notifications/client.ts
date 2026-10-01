@@ -3,7 +3,7 @@ import type { Catalog } from '../..';
 export const client: Catalog['notifications']['client'] = {
   requestReceived: {
     title: 'Cerere nouă',
-    body: '{name, select, null {Cineva} other {{name}}} vrea să te aibă ca antrenor.',
+    body: '{name, select, null {Cineva} other {{name}}} vrea să se antreneze sub îndrumarea ta.',
   },
   requestAccepted: {
     title: 'Cererea ta a fost acceptată',

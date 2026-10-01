@@ -451,7 +451,7 @@ describe('NotificationService', () => {
         expect.objectContaining({
           to: 'ro@test.io',
           title: 'Cerere nouă',
-          body: 'Ana vrea să te aibă ca antrenor.',
+          body: 'Ana vrea să se antreneze sub îndrumarea ta.',
           locale: 'ro',
           ctaLabel: 'Deschide MotionHive',
         }),

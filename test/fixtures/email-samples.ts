@@ -682,23 +682,31 @@ function clientRequestToInstructor(
 function clientRequestAccepted(
   name: string,
   variant: string,
-  audience: EmailAudience,
+  recipientRole: 'client' | 'instructor',
   recipientFirstName: string | null,
   responderName: string,
 ): EmailSample {
   return sample('clientRequestAcceptedTemplate', {
     name,
-    audience,
+    audience: recipientRole,
     variant,
     subject: (locale) =>
-      translate(locale, 'email.client.requestAccepted.subject', {
-        name: responderName,
-      }),
+      translate(
+        locale,
+        `email.client.requestAccepted.${recipientRole}.subject`,
+        {
+          name: responderName,
+        },
+      ),
     args: (locale) => [
       {
         recipientFirstName,
         responderName,
-        appLink: `${APP}/profile?tab=coaches`,
+        recipientRole,
+        appLink:
+          recipientRole === 'instructor'
+            ? `${APP}/coaching/clients`
+            : `${APP}/profile?tab=coaches`,
         locale,
       },
     ],
@@ -708,17 +716,22 @@ function clientRequestAccepted(
 function clientRequestDeclined(
   name: string,
   variant: string,
-  audience: EmailAudience,
+  recipientRole: 'client' | 'instructor',
   recipientFirstName: string | null,
   responderName: string,
 ): EmailSample {
   return sample('clientRequestDeclinedTemplate', {
     name,
-    audience,
+    audience: recipientRole,
     variant,
     subject: (locale) =>
-      translate(locale, 'email.client.requestDeclined.subject'),
-    args: (locale) => [{ recipientFirstName, responderName, locale }],
+      translate(
+        locale,
+        `email.client.requestDeclined.${recipientRole}.subject`,
+      ),
+    args: (locale) => [
+      { recipientFirstName, responderName, recipientRole, locale },
+    ],
   });
 }
 
@@ -1098,7 +1111,7 @@ function waitlistConfirmation(
     variant,
     subject: (locale) =>
       translate(locale, 'email.waitlist.confirmation.subject'),
-    args: (locale) => [visitorName, locale],
+    args: (locale) => [visitorName, `${APP}/auth/signup`, locale],
   });
 }
 

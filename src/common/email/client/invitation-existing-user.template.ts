@@ -2,9 +2,7 @@ import type { Locale } from '../../i18n';
 import { escapeHtml } from '../../utils/html.utils';
 import {
   baseLayout,
-  buttonRow,
   calloutBox,
-  dangerButton,
   eyebrow,
   heading,
   paragraph,
@@ -25,13 +23,10 @@ interface ClientInvitationExistingUserParams {
 
 /**
  * Client invitation to a recipient who already has a MotionHive
- * account. The CTA deep-links into the in-app coaches tab with the
- * specific request open, so a single click takes them to accept or
- * decline.
- *
- * TODO [product]: same `acceptLink` is used for both buttons; the FE
- * page handles either action from the highlighted request row. When
- * a dedicated decline endpoint exists, wire the second button to it.
+ * account. One button, into the in-app coaches tab with this request
+ * highlighted; accept and decline live there. Deliberately not two
+ * buttons that act from the email: mail scanners open links, and an
+ * answer should take a signed-in click.
  */
 export function clientInvitationExistingUserTemplate(
   params: ClientInvitationExistingUserParams,
@@ -48,10 +43,7 @@ export function clientInvitationExistingUserTemplate(
     ${personCard({ name: escapeHtml(instructorName), role: c.html('personRole') })}
     ${paragraph(c.html('body', name))}
     ${message ? calloutBox('info', `<em>${c.html('messageQuote', { message })}</em>`) : ''}
-    ${buttonRow([
-      primaryButton(c.html('ctaAccept'), acceptLink),
-      dangerButton(c.html('ctaDecline'), acceptLink),
-    ])}
+    ${primaryButton(c.html('cta'), acceptLink)}
     ${securityNote(c.html('security'))}
   `;
 
@@ -81,10 +73,7 @@ export function clientInvitationExistingUserTemplateText(
           c.text('body', name),
           ...(message ? [c.text('messageLine', { message })] : []),
         ],
-        ctas: [
-          { label: c.text('ctaAccept'), url: acceptLink },
-          { label: c.text('ctaDecline'), url: acceptLink },
-        ],
+        ctas: [{ label: c.text('cta'), url: acceptLink }],
       },
       { body: [c.text('security')] },
     ],

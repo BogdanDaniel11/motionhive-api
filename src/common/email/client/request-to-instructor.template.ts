@@ -2,9 +2,7 @@ import type { Locale } from '../../i18n';
 import { escapeHtml } from '../../utils/html.utils';
 import {
   baseLayout,
-  buttonRow,
   calloutBox,
-  dangerButton,
   eyebrow,
   heading,
   paragraph,
@@ -48,10 +46,7 @@ export function clientRequestToInstructorTemplate(
     ${personCard({ name: escapeHtml(clientName), role: c.html('personRole') })}
     ${paragraph(c.html('body', name))}
     ${message ? calloutBox('info', `<em>${c.html('messageQuote', { message })}</em>`) : ''}
-    ${buttonRow([
-      primaryButton(c.html('ctaAccept'), reviewLink),
-      dangerButton(c.html('ctaDecline'), reviewLink),
-    ])}
+    ${primaryButton(c.html('cta'), reviewLink)}
   `;
 
   return baseLayout(content, {
@@ -80,10 +75,7 @@ export function clientRequestToInstructorTemplateText(
           c.text('body', name),
           ...(message ? [c.text('messageLine', { message })] : []),
         ],
-        ctas: [
-          { label: c.text('ctaAccept'), url: reviewLink },
-          { label: c.text('ctaDecline'), url: reviewLink },
-        ],
+        ctas: [{ label: c.text('cta'), url: reviewLink }],
       },
     ],
   });

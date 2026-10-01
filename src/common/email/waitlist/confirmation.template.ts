@@ -2,22 +2,24 @@ import type { Locale } from '../../i18n';
 import {
   baseLayout,
   calloutBox,
-  divider,
   eyebrow,
   heading,
   paragraph,
   plainTextLayout,
+  primaryButton,
   subheading,
 } from '../_layouts/base-layout';
 import { emailCopy } from '../_layouts/copy';
 
 /**
- * Public-facing acknowledgement when someone joins the pre-launch
- * waitlist from the marketing site. Keep the tone light — these are
- * cold leads, not active users.
+ * Public-facing acknowledgement when someone joins the list from the
+ * marketing site. The web app is live, so the email sends them to sign
+ * up now; the list itself is for news of the mobile app. Keep the tone
+ * light — these are cold leads, not active users.
  */
 export function waitlistConfirmationTemplate(
   name: string | null | undefined,
+  signUpLink: string,
   locale: Locale,
 ): string {
   const c = emailCopy(locale, 'email.waitlist.confirmation');
@@ -27,10 +29,9 @@ export function waitlistConfirmationTemplate(
     ${heading(`${c.html('heading')} &#127881;`)}
     ${subheading(c.html('subheading'))}
     ${paragraph(c.html('intro', { name: name || null }))}
-    ${paragraph(c.html('building'))}
+    ${paragraph(c.html('live'))}
+    ${primaryButton(c.html('cta'), signUpLink)}
     ${calloutBox('info', c.html('next'))}
-    ${divider()}
-    ${paragraph(c.html('follow'))}
   `;
 
   return baseLayout(content, {
@@ -43,6 +44,7 @@ export function waitlistConfirmationTemplate(
 
 export function waitlistConfirmationTemplateText(
   name: string | null | undefined,
+  signUpLink: string,
   locale: Locale,
 ): string {
   const c = emailCopy(locale, 'email.waitlist.confirmation');
@@ -54,13 +56,10 @@ export function waitlistConfirmationTemplateText(
     sections: [
       {
         heading: c.text('heading'),
-        body: [
-          c.text('intro', { name: name || null }),
-          c.text('building'),
-          c.text('next'),
-        ],
+        body: [c.text('intro', { name: name || null }), c.text('live')],
+        ctas: [{ label: c.text('cta'), url: signUpLink }],
       },
-      { body: [c.text('follow')] },
+      { body: [c.text('next')] },
     ],
   });
 }

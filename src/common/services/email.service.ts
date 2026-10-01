@@ -312,15 +312,25 @@ export class EmailService {
     email: string,
     recipientFirstName: string | null,
     responderName: string,
+    /** Who sent the request: a client, or a coach who sent an invitation. */
+    recipientRole: 'client' | 'instructor',
     locale: Locale,
   ): Promise<void> {
-    const appLink = `${this.frontendUrl}/profile?tab=coaches`;
-    const subject = translate(locale, 'email.client.requestAccepted.subject', {
-      name: responderName,
-    });
+    // Each side lands where the new relationship shows: a coach on their
+    // clients list, a client on their coaches tab.
+    const appLink =
+      recipientRole === 'instructor'
+        ? `${this.frontendUrl}/coaching/clients`
+        : `${this.frontendUrl}/profile?tab=coaches`;
+    const subject = translate(
+      locale,
+      `email.client.requestAccepted.${recipientRole}.subject`,
+      { name: responderName },
+    );
     const html = clientRequestAcceptedTemplate({
       recipientFirstName,
       responderName,
+      recipientRole,
       appLink,
       locale,
     });
@@ -335,12 +345,18 @@ export class EmailService {
     email: string,
     recipientFirstName: string | null,
     responderName: string,
+    /** Who sent the request: a client, or a coach who sent an invitation. */
+    recipientRole: 'client' | 'instructor',
     locale: Locale,
   ): Promise<void> {
-    const subject = translate(locale, 'email.client.requestDeclined.subject');
+    const subject = translate(
+      locale,
+      `email.client.requestDeclined.${recipientRole}.subject`,
+    );
     const html = clientRequestDeclinedTemplate({
       recipientFirstName,
       responderName,
+      recipientRole,
       locale,
     });
     await this.send(email, subject, html);
@@ -422,7 +438,8 @@ export class EmailService {
     locale: Locale,
   ): Promise<void> {
     const subject = translate(locale, 'email.waitlist.confirmation.subject');
-    const html = waitlistConfirmationTemplate(name, locale);
+    const signUpLink = `${this.frontendUrl}/auth/signup`;
+    const html = waitlistConfirmationTemplate(name, signUpLink, locale);
 
     await this.send(email, subject, html);
   }

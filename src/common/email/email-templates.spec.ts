@@ -298,6 +298,7 @@ describe('escaping', () => {
         templates.clientRequestAcceptedTemplate({
           recipientFirstName: HOSTILE,
           responderName: HOSTILE,
+          recipientRole: 'instructor',
           appLink: LINK,
           locale,
         }),
@@ -308,6 +309,7 @@ describe('escaping', () => {
         templates.clientRequestDeclinedTemplate({
           recipientFirstName: HOSTILE,
           responderName: HOSTILE,
+          recipientRole: 'instructor',
           locale,
         }),
     ],
@@ -375,7 +377,12 @@ describe('escaping', () => {
     ],
     [
       'waitlist/confirmation',
-      (locale) => templates.waitlistConfirmationTemplate(HOSTILE, locale),
+      (locale) =>
+        templates.waitlistConfirmationTemplate(
+          HOSTILE,
+          'https://app.motionhive.fit/auth/signup',
+          locale,
+        ),
     ],
     [
       'feedback/confirmation',

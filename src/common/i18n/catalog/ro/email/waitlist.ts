@@ -3,16 +3,16 @@ import type { Catalog } from '../..';
 export const waitlist: Catalog['email']['waitlist'] = {
   confirmation: {
     subject: 'Ești pe lista MotionHive!',
-    preheader: 'Ești pe lista MotionHive!',
+    preheader:
+      'MotionHive e deja disponibil. Și vei fi printre primii care află când apare aplicația de mobil.',
     eyebrow: 'EȘTI PE LISTĂ',
     heading: 'Ești pe listă!',
     subheading: 'Mulțumim că te interesează MotionHive',
     intro:
       '{name, select, null {Salut!} other {Salut, {name}!}} Ne bucurăm mult că vrei să faci parte din comunitatea MotionHive.',
-    building:
-      'Lucrăm din greu la o platformă care face mișcarea mai accesibilă, mai sociabilă și mai plăcută. Vei afla **printre primii** când lansăm.',
-    next: '**Ce urmează?** Îți trimitem o invitație de îndată ce deschidem accesul timpuriu. Rămâi aproape!',
-    follow: 'Până atunci, urmărește-ne ca să vezi noutăți și ce mai pregătim.',
+    live: 'MotionHive e deja disponibil: îți poți face cont chiar azi ca să rezervi sesiuni, să lucrezi cu antrenori și să-ți urmărești antrenamentele.',
+    cta: 'Fă-ți cont',
+    next: '**Ce urmează?** Pregătim aplicația de mobil și vei afla **printre primii** când e gata.',
     footerNote:
       'Primești acest email pentru că te-ai înscris pe lista MotionHive.',
   },

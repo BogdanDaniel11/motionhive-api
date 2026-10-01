@@ -2,8 +2,8 @@
 
 Status (2026-10-01): **done.** Notifications (phase 2) and every transactional email (phase 3)
 render in the reader's language, English or Romanian. The Romanian was checked by blind
-back-translation and fixed; the owner's review sheets are
-`motionhive-ro-notifications-review.xlsx` and `motionhive-ro-emails-review.xlsx`. See "As built"
+back-translation and fixed; the owner's review sheet is
+`motionhive-ro-notifications-review.xlsx` (tabs Notifications, Emails, Email frame). See "As built"
 below; where it differs from the original "Design" section, "As built" wins.
 
 ## As built

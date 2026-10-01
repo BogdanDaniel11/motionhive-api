@@ -1154,6 +1154,9 @@ export class ClientService {
           sender.email,
           sender.firstName,
           responderName,
+          request.type === ClientRequestType.INSTRUCTOR_TO_CLIENT
+            ? 'instructor'
+            : 'client',
           toLocale(sender.language),
         )
         .catch((err: Error) =>
@@ -1262,6 +1265,9 @@ export class ClientService {
           sender.email,
           sender.firstName,
           responderName,
+          request.type === ClientRequestType.INSTRUCTOR_TO_CLIENT
+            ? 'instructor'
+            : 'client',
           toLocale(sender.language),
         )
         .catch((err: Error) =>

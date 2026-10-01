@@ -336,6 +336,40 @@ describe('ClientService', () => {
       expect(notificationService.notify).toHaveBeenCalledWith(
         expect.objectContaining({ userId: 'requester-1' }),
       );
+      // A client's request was accepted: the email speaks to a client.
+      await new Promise(setImmediate);
+      expect(emailService.sendClientRequestAcceptedEmail).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.anything(),
+        expect.any(String),
+        'client',
+        'en',
+      );
+    });
+
+    it('tells a coach their invitation was accepted, in their language', async () => {
+      clientRequestModel.findByPk.mockResolvedValue(
+        pendingRequest({ type: ClientRequestType.INSTRUCTOR_TO_CLIENT }),
+      );
+      instructorClientModel.findOne.mockResolvedValue(null);
+      instructorClientModel.create.mockResolvedValue(undefined);
+      jest.spyOn(User, 'findByPk').mockResolvedValue({
+        email: 'coach@x.io',
+        firstName: 'Dan',
+        lastName: 'Ionescu',
+        language: 'ro',
+      } as User);
+
+      await service.acceptRequest('r-1', 'recipient-1');
+      await new Promise(setImmediate);
+
+      expect(emailService.sendClientRequestAcceptedEmail).toHaveBeenCalledWith(
+        'coach@x.io',
+        'Dan',
+        'Dan Ionescu',
+        'instructor',
+        'ro',
+      );
     });
   });
 
@@ -385,6 +419,15 @@ describe('ClientService', () => {
       );
       expect(notificationService.notify).toHaveBeenCalledWith(
         expect.objectContaining({ userId: 'sender-1' }),
+      );
+      // The sender was the coach (an invitation): the email says so.
+      await new Promise(setImmediate);
+      expect(emailService.sendClientRequestDeclinedEmail).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.anything(),
+        expect.any(String),
+        'instructor',
+        'en',
       );
     });
   });
