@@ -417,7 +417,9 @@ describe('ExerciseService (smoke — not exhaustive)', () => {
       // stale local source.forkCount (41).
       expect(notificationService.notify).toHaveBeenCalledWith(
         expect.objectContaining({
-          body: expect.stringContaining('42 forks'),
+          message: expect.objectContaining({
+            params: expect.objectContaining({ count: 42 }),
+          }),
         }),
       );
     });

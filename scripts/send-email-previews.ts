@@ -231,8 +231,20 @@ const previews: Preview[] = [
     html: genericNotificationTemplate({
       title: 'New activity on your account',
       body: 'Coach Daniel sent you a new message about your training plan.',
+      locale: 'en',
       ctaUrl: `${FRONTEND_URL}/messages`,
       ctaLabel: 'Open messages',
+    }),
+  },
+  {
+    name: 'notification/generic-ro',
+    subject: '[MotionHive Test] Cerere nouă de antrenament',
+    html: genericNotificationTemplate({
+      title: 'Cerere nouă de antrenament',
+      body: 'Alex Popescu vrea să se antreneze cu tine.',
+      locale: 'ro',
+      ctaUrl: `${FRONTEND_URL}/coaching/pending-requests`,
+      ctaLabel: 'Deschide MotionHive',
     }),
   },
 ];

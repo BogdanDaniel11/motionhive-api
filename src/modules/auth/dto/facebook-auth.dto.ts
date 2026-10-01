@@ -1,5 +1,7 @@
-import { IsNotEmpty, IsString } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { SUPPORTED_LOCALES } from '../../../common/i18n';
+import type { Locale } from '../../../common/i18n';
 
 /**
  * DTO for Sign in with Facebook (token flow).
@@ -13,4 +15,14 @@ export class FacebookAuthDto {
   @IsString()
   @IsNotEmpty()
   accessToken: string;
+
+  @ApiPropertyOptional({
+    example: 'ro',
+    enum: SUPPORTED_LOCALES,
+    description:
+      'Language the person is using the app in. Only applied when this sign-in creates the account.',
+  })
+  @IsIn(SUPPORTED_LOCALES)
+  @IsOptional()
+  language?: Locale;
 }

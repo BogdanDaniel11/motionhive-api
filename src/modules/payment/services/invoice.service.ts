@@ -26,7 +26,7 @@ import { OrphanedWebhookError } from './webhook-errors';
 import { EmailService } from '../../../common/services/email.service';
 import { NotificationService } from '../../notification/notification.service';
 import { NotificationOutbox } from '../../notification/notification-outbox';
-import { formatMoney } from '../../notification/format';
+import { DEFAULT_LOCALE, formatMoney } from '../../../common/i18n';
 import {
   invoiceCreatedForClient,
   invoicePaidForClient,
@@ -767,7 +767,12 @@ export class InvoiceService {
           .filter(Boolean)
           .join(' ')
           .trim() || 'Your instructor';
-      const amountLabel = formatMoney(invoice.amountDueCents, invoice.currency);
+      // English until the invoice email itself is localized.
+      const amountLabel = formatMoney(
+        invoice.amountDueCents,
+        invoice.currency,
+        DEFAULT_LOCALE,
+      );
       const dueDateLabel = invoice.dueDate
         ? new Date(invoice.dueDate).toLocaleDateString('en-GB', {
             day: '2-digit',

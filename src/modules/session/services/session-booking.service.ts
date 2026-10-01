@@ -32,6 +32,7 @@ import { PatchParticipantDto } from '../dto/patch-participant.dto';
 import {
   bookingApprovedForUser,
   bookingDeclinedForUser,
+  bookingDeclinedSessionFullForUser,
   bookingPromotedForUser,
   participantJoinedForInstructor,
   participantLeftForInstructor,
@@ -407,13 +408,7 @@ export class SessionBookingService {
       if (newStatus === SessionParticipantStatus.Confirmed) {
         outbox.add(bookingApprovedForUser(participant.userId, ref));
       } else if (newStatus === SessionParticipantStatus.Declined) {
-        outbox.add(
-          bookingDeclinedForUser(
-            participant.userId,
-            ref,
-            'Session is now full',
-          ),
-        );
+        outbox.add(bookingDeclinedSessionFullForUser(participant.userId, ref));
       }
       // (WAITLISTED case: notify with the standard booking-result message
       // since the user already had a pending row — they need to know

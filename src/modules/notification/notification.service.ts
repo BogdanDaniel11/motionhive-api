@@ -22,6 +22,12 @@ import {
 } from './entities/notification-preference.entity';
 import { resolveChannels } from './notification-defaults';
 import { NotificationType } from './notification-types';
+import {
+  NotificationMessage,
+  renderNotificationMessage,
+  renderStoredNotification,
+} from './notification-message';
+import { DEFAULT_LOCALE, Locale, toLocale, translate } from '../../common/i18n';
 import { User } from '../user/entities/user.entity';
 import { EmailService } from '../../common/services/email.service';
 import { JobsService } from '../jobs/jobs.service';
@@ -30,17 +36,31 @@ import { JobsService } from '../jobs/jobs.service';
 // notification.service keep working without churn.
 export { NotificationType } from './notification-types';
 
-export interface NotifyParams {
-  userId: string;
+/**
+ * What the notification says. One of two shapes:
+ *
+ * - `message`: a catalog key plus raw params. The text is rendered per
+ *   recipient, in their language. This is the shape to use.
+ * - `title` + `body`: finished text, shown to everyone as is, whatever
+ *   their language. For text that has no catalog entry by nature: the
+ *   debug endpoint, which sends whatever an operator types. Product
+ *   notifications never use it.
+ */
+type NotifyContent =
+  | { message: NotificationMessage; title?: never; body?: never }
+  | { title: string; body: string; message?: never };
+
+interface NotifyOptions {
   type: NotificationType;
-  title: string;
-  body: string;
   data?: NotificationData;
   severity?: NotificationSeverity;
   /** sha256 dedup key — if a notification with this fingerprint already
    *  exists, the call is a no-op (returns the existing notification). */
   fingerprint?: string;
-  /** Optional CTA label for the email channel. */
+  /**
+   * Email button label for `title` + `body` producers. A `message`
+   * defines its own in the catalog (`cta`).
+   */
   ctaLabel?: string;
   /**
    * Per-call channel override applied AFTER the user's resolved
@@ -54,6 +74,11 @@ export interface NotifyParams {
    */
   channelOverride?: Partial<ChannelPreferences>;
 }
+
+/** A notification for many users: everything except the recipient. */
+export type NotifyManyParams = NotifyOptions & NotifyContent;
+
+export type NotifyParams = NotifyManyParams & { userId: string };
 
 export interface NotifyResult {
   notificationId: string;
@@ -97,16 +122,8 @@ export class NotificationService {
    * in `delivered_channels` so it can be retried out-of-band later.
    */
   async notify(params: NotifyParams): Promise<NotifyResult> {
-    const result = await this.notifyMany([params.userId], {
-      type: params.type,
-      title: params.title,
-      body: params.body,
-      data: params.data,
-      severity: params.severity,
-      fingerprint: params.fingerprint,
-      ctaLabel: params.ctaLabel,
-      channelOverride: params.channelOverride,
-    });
+    const { userId, ...rest } = params;
+    const result = await this.notifyMany([userId], rest);
     return result.results[0];
   }
 
@@ -117,7 +134,7 @@ export class NotificationService {
    */
   async notifyMany(
     userIds: string[],
-    params: Omit<NotifyParams, 'userId'>,
+    params: NotifyManyParams,
   ): Promise<{
     notificationId: string;
     deduped: boolean;
@@ -148,11 +165,20 @@ export class NotificationService {
         const audienceType = NotificationAudienceType.USER;
         const audienceId = uniqueUserIds.length === 1 ? uniqueUserIds[0] : null;
 
+        // The row always carries English text. For a catalog message it
+        // is the fallback rendering; readers get their own language from
+        // messageKey + messageParams.
+        const text = params.message
+          ? renderNotificationMessage(params.message, DEFAULT_LOCALE)
+          : { title: params.title, body: params.body };
+
         const created = await this.notificationModel.create(
           {
             type: params.type,
-            title: params.title,
-            body: params.body,
+            title: text.title,
+            body: text.body,
+            messageKey: params.message?.key ?? null,
+            messageParams: params.message?.params ?? null,
             data: params.data ?? null,
             severity: params.severity ?? NotificationSeverity.INFO,
             audienceType,
@@ -177,10 +203,10 @@ export class NotificationService {
       prefRows.map((p) => [p.userId, p.channels]),
     );
 
-    // Pre-load user emails (single query).
+    // Pre-load user emails + languages (single query).
     const users = await this.userModel.findAll({
       where: { id: { [Op.in]: uniqueUserIds } },
-      attributes: ['id', 'email', 'firstName'],
+      attributes: ['id', 'email', 'firstName', 'language'],
     });
     const userById = new Map(users.map((u) => [u.id, u]));
 
@@ -201,6 +227,7 @@ export class NotificationService {
         notification,
         userId,
         userEmail: user?.email ?? null,
+        locale: toLocale(user?.language),
         channels,
         ctaLabel: params.ctaLabel,
       });
@@ -230,10 +257,19 @@ export class NotificationService {
     notification: Notification;
     userId: string;
     userEmail: string | null;
+    locale: Locale;
     channels: Required<ChannelPreferences>;
     ctaLabel?: string;
   }): Promise<{ receipt: NotificationReceipt; delivered: DeliveredChannels }> {
-    const { notification, userId, userEmail, channels, ctaLabel } = input;
+    const { notification, userId, userEmail, channels } = input;
+
+    // This recipient's wording. Rendered from the row (not the notify
+    // params) so a fingerprint-deduped call delivers what was stored.
+    const text = renderStoredNotification(notification, input.locale);
+    const ctaLabel =
+      text.cta ??
+      input.ctaLabel ??
+      translate(text.locale, 'email.layout.openApp');
 
     const [receipt] = await this.receiptModel.findOrCreate({
       where: { notificationId: notification.id, userId },
@@ -267,10 +303,11 @@ export class NotificationService {
         {
           receiptId: receipt.id,
           to: userEmail,
-          title: notification.title,
-          body: notification.body,
+          title: text.title,
+          body: text.body,
+          locale: text.locale,
           ctaUrl,
-          ctaLabel: ctaUrl ? (ctaLabel ?? 'Open MotionHive') : undefined,
+          ctaLabel: ctaUrl ? ctaLabel : undefined,
         },
         { jobId: `email_send.${receipt.id}` },
       );
@@ -281,10 +318,11 @@ export class NotificationService {
       if (enqueued === null) {
         const status = await this.emailService.sendNotificationEmail({
           to: userEmail,
-          title: notification.title,
-          body: notification.body,
+          title: text.title,
+          body: text.body,
+          locale: text.locale,
           ctaUrl,
-          ctaLabel: ctaUrl ? (ctaLabel ?? 'Open MotionHive') : undefined,
+          ctaLabel: ctaUrl ? ctaLabel : undefined,
         });
         delivered.email = status.ok
           ? 'sent'
@@ -306,8 +344,8 @@ export class NotificationService {
         {
           receiptId: receipt.id,
           userId,
-          title: notification.title,
-          body: notification.body,
+          title: text.title,
+          body: text.body,
           data: toPushData(notification.data),
           collapseKey: notification.fingerprint ?? undefined,
         },

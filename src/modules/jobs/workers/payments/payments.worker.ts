@@ -5,6 +5,7 @@ import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import type { Stripe } from 'stripe-types';
 import { PaymentRemindersService } from '../../../payment/services/payment-reminders.service';
 import { BalanceCacheService } from '../../../payment/services/balance-cache.service';
+import { CustomerService } from '../../../payment/services/customer.service';
 import { WebhookHandlerService } from '../../../payment/services/webhook-handler.service';
 import { JobContext } from '../../common/job-context';
 import { JobHandler, MultiJobWorker } from '../../common/multi-job.worker';
@@ -24,6 +25,7 @@ export class PaymentsWorker extends MultiJobWorker {
     private readonly reminders: PaymentRemindersService,
     private readonly balanceCache: BalanceCacheService,
     private readonly webhooks: WebhookHandlerService,
+    private readonly customers: CustomerService,
   ) {
     super(logger);
   }
@@ -83,6 +85,17 @@ export class PaymentsWorker extends MultiJobWorker {
       const r = await this.webhooks.reconcileOrphaned(new Date());
       ctx.log.log(
         `reconcile resolved=${r.resolved} agedOut=${r.agedOut} stillOrphaned=${r.stillOrphaned}`,
+      );
+    },
+    sync_customer_locale: async (p, ctx) => {
+      const payload =
+        p as unknown as JobPayloads['payments.sync_customer_locale'];
+      const synced = await this.customers.syncPreferredLocale(
+        payload.userId,
+        payload.locale,
+      );
+      ctx.log.log(
+        `customer locale user=${payload.userId} locale=${payload.locale} synced=${synced}`,
       );
     },
   };

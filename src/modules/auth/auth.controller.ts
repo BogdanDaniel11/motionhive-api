@@ -145,13 +145,13 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 900000 } })
   @ApiEndpoint({ ...AuthDocs.google, body: GoogleAuthDto })
   async google(@Body() dto: GoogleAuthDto) {
-    return this.authService.registerWithGoogle(dto.idToken);
+    return this.authService.registerWithGoogle(dto.idToken, dto.language);
   }
 
   @Post('facebook')
   @Throttle({ default: { limit: 10, ttl: 900000 } })
   @ApiEndpoint({ ...AuthDocs.facebook, body: FacebookAuthDto })
   async facebook(@Body() dto: FacebookAuthDto) {
-    return this.authService.registerWithFacebook(dto.accessToken);
+    return this.authService.registerWithFacebook(dto.accessToken, dto.language);
   }
 }

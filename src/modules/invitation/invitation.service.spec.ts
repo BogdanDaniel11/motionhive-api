@@ -24,6 +24,7 @@ import {
   makeSilentLogger,
   type ModelMock,
 } from '../../../test/helpers/sequelize-mocks';
+import { notificationText } from '../../../test/helpers/notification-text';
 
 /**
  * Smoke coverage for the group-invitation flow. Owner sends, invitee
@@ -354,10 +355,10 @@ describe('InvitationService', () => {
       expect(invitation.update).toHaveBeenCalledWith(
         expect.objectContaining({ declinedAt: expect.any(Date) }),
       );
-      const notifyArgs = notificationService.notify.mock.calls[0][0] as {
-        body: string;
-      };
-      expect(notifyArgs.body).not.toContain('invitee@x.com');
+      const text = notificationText(
+        notificationService.notify.mock.calls[0][0],
+      );
+      expect(text.body).not.toContain('invitee@x.com');
     });
   });
 });

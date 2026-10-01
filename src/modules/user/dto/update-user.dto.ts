@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsIn,
   IsOptional,
   IsString,
   IsNumber,
@@ -11,6 +12,8 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { SUPPORTED_LOCALES } from '../../../common/i18n';
+import type { Locale } from '../../../common/i18n';
 
 /**
  * Update User DTO
@@ -63,11 +66,15 @@ export class UpdateUserDto {
   @IsOptional()
   avatarId?: number;
 
-  @ApiPropertyOptional({ example: 'en', description: 'Language code' })
-  @IsString()
-  @MaxLength(5)
+  @ApiPropertyOptional({
+    example: 'en',
+    enum: SUPPORTED_LOCALES,
+    description:
+      'UI language. Also the language of notifications and emails we send.',
+  })
+  @IsIn(SUPPORTED_LOCALES)
   @IsOptional()
-  language?: string;
+  language?: Locale;
 
   @ApiPropertyOptional({ example: 'Europe/Bucharest' })
   @IsString()

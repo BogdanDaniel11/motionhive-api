@@ -14,6 +14,8 @@ import { Sequelize } from 'sequelize-typescript';
 import { Op } from 'sequelize';
 import { User } from '../user/entities/user.entity';
 import { UserService } from '../user/user.service';
+import type { OAuthProfile } from '../user/user.service';
+import type { Locale } from '../../common/i18n';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -689,7 +691,7 @@ export class AuthService {
   // OAUTH
   // =====================================================
 
-  async registerWithGoogle(idToken: string) {
+  async registerWithGoogle(idToken: string, language?: Locale) {
     const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
     if (!clientId) {
       throw new BadRequestException('Google Sign-In is not configured');
@@ -733,12 +735,13 @@ export class AuthService {
       email,
       firstName: payload.given_name?.trim() || 'User',
       lastName: payload.family_name?.trim() || '',
+      language,
     };
 
     return this.handleOAuthSignIn('GOOGLE', profile);
   }
 
-  async registerWithFacebook(accessToken: string) {
+  async registerWithFacebook(accessToken: string, language?: Locale) {
     const appId = this.configService.get<string>('FACEBOOK_APP_ID');
     const appSecret = this.configService.get<string>('FACEBOOK_APP_SECRET');
     if (!appId || !appSecret) {
@@ -797,6 +800,7 @@ export class AuthService {
       email,
       firstName: me.first_name?.trim() || 'User',
       lastName: me.last_name?.trim() || '',
+      language,
     };
 
     return this.handleOAuthSignIn('FACEBOOK', profile);
@@ -810,12 +814,7 @@ export class AuthService {
    */
   private async handleOAuthSignIn(
     provider: 'GOOGLE' | 'FACEBOOK',
-    profile: {
-      providerUserId: string;
-      email: string;
-      firstName: string;
-      lastName: string;
-    },
+    profile: OAuthProfile,
   ) {
     const transaction = await this.sequelize.transaction();
     try {

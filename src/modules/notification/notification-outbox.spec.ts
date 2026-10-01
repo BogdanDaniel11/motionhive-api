@@ -39,7 +39,7 @@ function makeParams(overrides: Partial<NotifyParams> = {}): NotifyParams {
     body: '€10.00 due Friday.',
     data: { screen: 'my-invoices', entityId: 'inv-1' },
     ...overrides,
-  };
+  } as NotifyParams;
 }
 
 describe('NotificationOutbox', () => {

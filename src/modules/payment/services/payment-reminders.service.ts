@@ -35,21 +35,6 @@ const CARD_EXPIRY_WINDOW_DAYS = 30;
 /** Stripe dispute statuses that still need the merchant to act. */
 const DISPUTE_NEEDS_RESPONSE = ['needs_response', 'warning_needs_response'];
 
-const MONTHS = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
-
 /**
  * Cron-driven payment reminder sweeps (the `payments.*` reminder jobs).
  * Each method queries due rows and fires notifications directly via
@@ -185,7 +170,6 @@ export class PaymentRemindersService {
   async sendMonthlyEarningsSummaries(now: Date): Promise<{ sent: number }> {
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const monthLabel = `${MONTHS[lastMonthStart.getMonth()]} ${lastMonthStart.getFullYear()}`;
     const monthKey = `${lastMonthStart.getFullYear()}-${String(lastMonthStart.getMonth() + 1).padStart(2, '0')}`;
 
     const rows = (await this.paymentModel.findAll({
@@ -212,7 +196,7 @@ export class PaymentRemindersService {
       .filter((r) => Number(r.cnt) > 0)
       .map((r) =>
         earningsSummaryForInstructor(r.instructorId, {
-          monthLabel,
+          month: monthKey,
           monthKey: `${monthKey}:${r.currency}`,
           grossCents: Number(r.gross),
           currency: r.currency,

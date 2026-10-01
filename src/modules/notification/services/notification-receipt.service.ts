@@ -18,6 +18,8 @@ import {
   TYPE_TO_CATEGORY,
 } from '../notification-categories';
 import { NotificationType } from '../notification-types';
+import { renderStoredNotification } from '../notification-message';
+import type { Locale } from '../../../common/i18n';
 
 /**
  * Shape returned to the FE — flattens the (notification + receipt)
@@ -57,6 +59,8 @@ export interface ListReceiptsOptions {
   /** Narrow to a single category. Omit for everything. */
   category?: NotificationCategory;
   unreadOnly?: boolean;
+  /** The reader's language: title/body are rendered in it. */
+  locale: Locale;
 }
 
 /**
@@ -114,7 +118,7 @@ export class NotificationReceiptService {
       offset: getOffset(opts.page, opts.limit),
     });
 
-    const items = rows.map((r) => this.toBellShape(r));
+    const items = rows.map((r) => this.toBellShape(r, opts.locale));
     return buildPaginatedResponse(items, count, opts.page, opts.limit);
   }
 
@@ -334,8 +338,14 @@ export class NotificationReceiptService {
     return receipt;
   }
 
-  private toBellShape(receipt: NotificationReceipt): BellNotification {
+  private toBellShape(
+    receipt: NotificationReceipt,
+    locale: Locale,
+  ): BellNotification {
     const n = receipt.notification;
+    // Rendered per read, so a reader who switches language sees their
+    // history in the new one.
+    const text = renderStoredNotification(n, locale);
     return {
       id: receipt.id,
       notificationId: n.id,
@@ -346,8 +356,8 @@ export class NotificationReceiptService {
       category:
         TYPE_TO_CATEGORY[n.type as NotificationType] ??
         NotificationCategory.Account,
-      title: n.title,
-      body: n.body,
+      title: text.title,
+      body: text.body,
       data: n.data,
       severity: n.severity,
       iconUrl: n.iconUrl,

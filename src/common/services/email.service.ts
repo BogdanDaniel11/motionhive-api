@@ -34,6 +34,7 @@ import {
   waitlistConfirmationTemplate,
   welcomeTemplate,
 } from '../email';
+import type { Locale } from '../i18n';
 
 /**
  * Email Service
@@ -571,8 +572,9 @@ export class EmailService {
 
   /**
    * Generic notification email used by NotificationService when a
-   * notification's email channel is enabled. Renders the same title/body
-   * stored on the in-app row, with an optional CTA link.
+   * notification's email channel is enabled. `title` / `body` arrive
+   * already rendered in the recipient's language; `locale` says which,
+   * so the layout around them matches.
    *
    * Returns a status object so the caller can record per-channel outcome
    * on the notification_receipt row. This differs from other send methods
@@ -583,12 +585,14 @@ export class EmailService {
     to: string;
     title: string;
     body: string;
+    locale: Locale;
     ctaUrl?: string;
     ctaLabel?: string;
   }): Promise<{ ok: true } | { ok: false; reason: string }> {
     const html = genericNotificationTemplate({
       title: params.title,
       body: params.body,
+      locale: params.locale,
       ctaUrl: params.ctaUrl,
       ctaLabel: params.ctaLabel,
     });

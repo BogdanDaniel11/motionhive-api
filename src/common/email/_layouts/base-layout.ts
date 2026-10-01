@@ -27,6 +27,8 @@
  * `src/common/utils/html.utils.ts`.
  */
 
+import { DEFAULT_LOCALE, Locale, translate } from '../../i18n';
+
 // ─────────────────────────────────────────────────────────────────────
 // LOGO
 // ─────────────────────────────────────────────────────────────────────
@@ -71,6 +73,22 @@ export const LEGAL_URLS = {
   privacy: `${WEBSITE_URL}/legal/privacy-policy`,
   cookies: `${WEBSITE_URL}/legal/cookie-policy`,
 };
+
+/**
+ * The same documents in the reader's language. The marketing site serves
+ * English at the root and every other language under `/<locale>` on the
+ * same path.
+ */
+function legalUrls(locale: Locale): typeof LEGAL_URLS {
+  if (locale === DEFAULT_LOCALE) return LEGAL_URLS;
+  const localized = (url: string) =>
+    url.replace(WEBSITE_URL, `${WEBSITE_URL}/${locale}`);
+  return {
+    terms: localized(LEGAL_URLS.terms),
+    privacy: localized(LEGAL_URLS.privacy),
+    cookies: localized(LEGAL_URLS.cookies),
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // COLOR TOKENS
@@ -246,8 +264,6 @@ interface CategoryStyle {
   chipFg: string;
   /** 3px accent rule under the header. */
   rule: string;
-  /** Default eyebrow label (templates can override). */
-  defaultLabel: string;
   /** Whether the heroBand renders by default. */
   defaultHeroBand: boolean;
 }
@@ -257,35 +273,30 @@ const CATEGORY_STYLES: Record<EmailCategory, CategoryStyle> = {
     chipBg: COLORS.honey100,
     chipFg: COLORS.honey800,
     rule: COLORS.honey,
-    defaultLabel: 'ACTION REQUIRED',
     defaultHeroBand: true,
   },
   confirmation: {
     chipBg: COLORS.teal100,
     chipFg: COLORS.teal700,
     rule: COLORS.teal500,
-    defaultLabel: 'CONFIRMED',
     defaultHeroBand: false,
   },
   update: {
     chipBg: '#e2e8f0',
     chipFg: COLORS.ink2,
     rule: COLORS.ink2,
-    defaultLabel: 'UPDATE',
     defaultHeroBand: false,
   },
   time: {
     chipBg: COLORS.teal100,
     chipFg: COLORS.teal700,
     rule: COLORS.teal500,
-    defaultLabel: 'REMINDER',
     defaultHeroBand: true,
   },
   request: {
     chipBg: COLORS.coral100,
     chipFg: COLORS.coral700,
     rule: COLORS.coral500,
-    defaultLabel: 'REQUEST',
     defaultHeroBand: false,
   },
 };
@@ -318,6 +329,12 @@ export interface BaseLayoutOptions {
    * email to skip the band; pass `true` on confirmation to add one.
    */
   heroBand?: boolean;
+  /**
+   * Language of the layout chrome (footer links, legal line, `lang`
+   * attribute). Pass the same locale the content was written in.
+   * Defaults to English for templates not localized yet.
+   */
+  locale?: Locale;
 }
 
 /**
@@ -354,10 +371,12 @@ export function baseLayout(
   const showHeroBand = opts.heroBand ?? style.defaultHeroBand;
   const preheader = opts.preheader;
   const reasonNote = opts.footerNote;
+  const locale = opts.locale ?? DEFAULT_LOCALE;
+  const legal = legalUrls(locale);
 
   return `
 <!DOCTYPE html>
-<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<html lang="${locale}" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -461,11 +480,11 @@ export function baseLayout(
                 </tr>
                 <tr>
                   <td style="font-family:${FONT_BODY};font-size:11px;line-height:1.9;color:${COLORS.ink3};padding-top:8px;">
-                    <a href="${LEGAL_URLS.terms}" style="color:${COLORS.footerLink};text-decoration:none;">Terms of Service</a>
+                    <a href="${legal.terms}" style="color:${COLORS.footerLink};text-decoration:none;">${translate(locale, 'email.layout.footer.terms')}</a>
                     &nbsp;&middot;&nbsp;
-                    <a href="${LEGAL_URLS.privacy}" style="color:${COLORS.footerLink};text-decoration:none;">Privacy Policy</a>
+                    <a href="${legal.privacy}" style="color:${COLORS.footerLink};text-decoration:none;">${translate(locale, 'email.layout.footer.privacy')}</a>
                     &nbsp;&middot;&nbsp;
-                    <a href="${LEGAL_URLS.cookies}" style="color:${COLORS.footerLink};text-decoration:none;">Cookie Policy</a>
+                    <a href="${legal.cookies}" style="color:${COLORS.footerLink};text-decoration:none;">${translate(locale, 'email.layout.footer.cookies')}</a>
                   </td>
                 </tr>
                 <tr>
@@ -489,7 +508,7 @@ export function baseLayout(
                   <td style="font-family:${FONT_BODY};font-size:11px;line-height:1.6;color:${COLORS.ink3};padding-top:4px;">
                     <a href="mailto:${COMPANY.contactEmail}" style="color:${COLORS.footerLink};text-decoration:none;">${COMPANY.contactEmail}</a>
                     &nbsp;&middot;&nbsp;
-                    &copy; ${new Date().getFullYear()} ${COMPANY.tradingName}. All rights reserved.
+                    &copy; ${new Date().getFullYear()} ${COMPANY.tradingName}. ${translate(locale, 'email.layout.footer.rightsReserved')}
                   </td>
                 </tr>
               </table>
@@ -516,13 +535,15 @@ export function baseLayout(
 export function eyebrow(
   text: string,
   category: EmailCategory = 'update',
+  locale: Locale = DEFAULT_LOCALE,
 ): string {
   const s = CATEGORY_STYLES[category];
+  const label = text || translate(locale, `email.layout.eyebrow.${category}`);
   return `
     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px;">
       <tr>
         <td style="background-color:${s.chipBg};border-radius:999px;padding:5px 12px;font-family:${FONT_DISPLAY};font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${s.chipFg};line-height:1.2;">
-          ${text || s.defaultLabel}
+          ${label}
         </td>
       </tr>
     </table>`;
@@ -894,8 +915,14 @@ export function plainTextLayout(params: {
    * can pass the same string.
    */
   footerNote?: string;
+  /** Language of the footer lines. Defaults to English. */
+  locale?: Locale;
 }): string {
   const { preheader, sections, footerNote } = params;
+  const locale = params.locale ?? DEFAULT_LOCALE;
+  const legal = legalUrls(locale);
+  const footer = (key: 'terms' | 'privacy' | 'cookies' | 'rightsReserved') =>
+    translate(locale, `email.layout.footer.${key}`);
   const lines: string[] = [];
 
   lines.push('MotionHive');
@@ -942,10 +969,10 @@ export function plainTextLayout(params: {
   );
   lines.push(COMPANY.contactEmail);
   lines.push(
-    `Terms: ${LEGAL_URLS.terms} · Privacy: ${LEGAL_URLS.privacy} · Cookies: ${LEGAL_URLS.cookies}`,
+    `${footer('terms')}: ${legal.terms} · ${footer('privacy')}: ${legal.privacy} · ${footer('cookies')}: ${legal.cookies}`,
   );
   lines.push(
-    `(c) ${new Date().getFullYear()} ${COMPANY.tradingName}. All rights reserved.`,
+    `(c) ${new Date().getFullYear()} ${COMPANY.tradingName}. ${footer('rightsReserved')}`,
   );
 
   return lines.join('\n');

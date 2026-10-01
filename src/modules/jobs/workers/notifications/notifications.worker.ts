@@ -3,6 +3,7 @@ import type { LoggerService } from '@nestjs/common';
 import { Processor } from '@nestjs/bullmq';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 
+import { toLocale } from '../../../../common/i18n';
 import { EmailService } from '../../../../common/services/email.service';
 import { PushDeliveryService } from '../../../notification/push/push-delivery.service';
 import { NotificationReceiptService } from '../../../notification/services/notification-receipt.service';
@@ -65,6 +66,7 @@ export class NotificationsWorker extends MultiJobWorker {
       to: payload.to,
       title: payload.title,
       body: payload.body,
+      locale: toLocale(payload.locale),
       ctaUrl: payload.ctaUrl,
       ctaLabel: payload.ctaLabel,
     });

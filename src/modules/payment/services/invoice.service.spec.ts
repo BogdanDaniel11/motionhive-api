@@ -30,6 +30,7 @@ import {
   makeSilentLogger,
   type ModelMock,
 } from '../../../../test/helpers/sequelize-mocks';
+import { notificationText } from '../../../../test/helpers/notification-text';
 
 /**
  * These specs cover the `updateDraft` flow only. The legacy create/send
@@ -518,7 +519,7 @@ describe('InvoiceService — Phase 7 notification wiring', () => {
         expect.objectContaining({
           userId: 'client-1',
           type: NotificationType.INVOICE_CREATED,
-          title: 'New invoice',
+          message: expect.objectContaining({ key: 'payment.invoiceCreated' }),
           data: expect.objectContaining({
             screen: 'profile/invoices',
             entityId: 'inv-1',
@@ -540,12 +541,10 @@ describe('InvoiceService — Phase 7 notification wiring', () => {
 
       await service.sendInvoice('user-1', 'inv-1');
 
-      const call = notificationMock.notify.mock.calls[0][0] as {
-        body: string;
-      };
+      const text = notificationText(notificationMock.notify.mock.calls[0][0]);
       // Amount is rendered with locale formatting. Just check structure.
-      expect(call.body).toMatch(/due/i);
-      expect(call.body).toMatch(/2026/);
+      expect(text.body).toMatch(/due/i);
+      expect(text.body).toMatch(/2026/);
     });
 
     it('formats body without due date when missing', async () => {
@@ -555,11 +554,9 @@ describe('InvoiceService — Phase 7 notification wiring', () => {
 
       await service.sendInvoice('user-1', 'inv-1');
 
-      const call = notificationMock.notify.mock.calls[0][0] as {
-        body: string;
-      };
-      expect(call.body).toMatch(/open to view details/i);
-      expect(call.body).not.toMatch(/due/i);
+      const text = notificationText(notificationMock.notify.mock.calls[0][0]);
+      expect(text.body).toMatch(/open to view details/i);
+      expect(text.body).not.toMatch(/due/i);
     });
 
     it('does NOT fire INVOICE_CREATED for guest invoice (clientId=null)', async () => {
@@ -624,7 +621,9 @@ describe('InvoiceService — Phase 7 notification wiring', () => {
         expect.objectContaining({
           userId: 'user-1',
           type: NotificationType.INVOICE_PAID,
-          title: 'Invoice paid',
+          message: expect.objectContaining({
+            key: 'payment.invoicePaidForInstructor',
+          }),
         }),
       );
     });
@@ -648,9 +647,10 @@ describe('InvoiceService — Phase 7 notification wiring', () => {
       );
       await outbox.flush();
 
-      const calls = notificationMock.notify.mock.calls.map(
-        (c) => c[0] as { userId: string; title: string },
-      );
+      const calls = notificationMock.notify.mock.calls.map((c) => ({
+        userId: (c[0] as { userId: string }).userId,
+        title: notificationText(c[0]).title,
+      }));
       expect(calls).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -778,7 +778,7 @@ describe('InvoiceService — Phase 7 notification wiring', () => {
         expect.objectContaining({
           userId: 'client-1',
           type: NotificationType.PAYMENT_FAILED,
-          title: 'Payment failed',
+          message: { key: 'payment.invoicePaymentFailed' },
           data: expect.objectContaining({
             screen: 'profile/invoices',
             entityId: 'inv-1',

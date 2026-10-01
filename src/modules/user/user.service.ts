@@ -41,6 +41,8 @@ import {
 import { Invitation } from '../invitation/entities/invitation.entity';
 import { Role } from '../role/entities/role.entity';
 import { SearchIndexService } from '../search/search-index.service';
+import { JobsService } from '../jobs/jobs.service';
+import type { Locale } from '../../common/i18n';
 
 /**
  * Roles that must never appear in user-picker search results, regardless of
@@ -54,6 +56,8 @@ export interface OAuthProfile {
   email: string;
   firstName: string;
   lastName: string;
+  /** Language the app was in at sign-in. Only used when creating the user. */
+  language?: Locale;
 }
 
 /**
@@ -88,6 +92,7 @@ export class UserService {
     @Inject(WINSTON_MODULE_NEST_PROVIDER)
     private readonly logger: LoggerService,
     private readonly searchIndexService: SearchIndexService,
+    private readonly jobs: JobsService,
   ) {}
 
   /** Exact, case-sensitive match. Caller normalises (lowercase + trim). */
@@ -331,6 +336,8 @@ export class UserService {
         firstName: userData.firstName,
         lastName: userData.lastName,
         phone: userData.phone,
+        // Undefined falls through to the column default ('en').
+        language: userData.language,
         handle,
       },
       { transaction },
@@ -514,6 +521,7 @@ export class UserService {
         firstName: profile.firstName,
         lastName: profile.lastName,
         isEmailVerified: true,
+        language: profile.language,
         handle,
       },
       { transaction },
@@ -563,8 +571,22 @@ export class UserService {
       }
     }
 
+    const languageChanged =
+      dto.language !== undefined && dto.language !== user.language;
+
     await user.update(dto, { transaction });
     await this.searchIndexService.upsertUser(user.id, transaction);
+
+    // Stripe sends its own invoice emails and hosts its own pages, in the
+    // language on the Stripe customer. Keep that in step with the account.
+    // The new language rides in the payload, so the worker never reads a
+    // row this transaction has not committed yet.
+    if (languageChanged && dto.language) {
+      await this.jobs.enqueue('payments.sync_customer_locale', {
+        userId,
+        locale: dto.language,
+      });
+    }
     return user;
   }
 

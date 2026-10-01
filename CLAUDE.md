@@ -100,7 +100,7 @@ src/
 - **Thin controllers**: controllers do request unwrap → service call → response. No HTML rendering, no caching state, no field-picking, no DTO-shape branching, no query-string parsing/clamping (use a DTO with `@Min/@Max` instead). When a controller method grows past ~10 lines of work, push it into the service.
 - **Notifications**:
   - Producers call `notificationService.notify(builder(...))` — never object literals at the call site. Builders live in `<module>/notifications.ts` and take **primitive** arguments (id, name, cents, currency), never Sequelize entities (avoids partial-load bugs).
-  - Shared formatters in `notification/format.ts`: `formatMoney(cents, currency)`, `formatDueDate(date)`.
+  - Amounts and dates go into message params as raw tagged values from `common/i18n` (`money(cents, currency)`, `day(date)`, `dayTime(date, tz)`, `month('YYYY-MM')`), formatted per reader.
   - `data.screen` must map to a real FE route; tabbed pages use `data.queryParams` (e.g. `screen: 'profile', queryParams: { tab: 'memberships' }`) instead of `entityId`.
   - Place `notify()` calls **after** the surrounding tx commits (search `// notify-after-commit` for examples). Never inside the tx callback — `notify()` opens its own tx and a rollback would orphan the alert.
   - For webhook flows you don't own the tx of, use `NotificationOutbox` + `outbox.add(builder(...))` + `outbox.flush()` post-commit / `outbox.discard()` on rollback. See `notification/notification-outbox.ts`.
@@ -111,6 +111,7 @@ src/
   - `webhook_event` table has UNIQUE on `stripe_event_id` → idempotent replays
 - **Email idempotency**: BullMQ enqueues with `jobId = receipt.id`, AND the worker checks `receiptService.isChannelDelivered(receiptId, 'email')` before sending. Both layers are needed — jobId dedups re-enqueue, the receipt check dedups worker retries (Resend has no idempotency-key support).
 - **OAuth idempotency**: `social_account` has UNIQUE on `(provider, provider_user_id)`. `userService.findOrCreateFromOAuth` swallows a `UniqueConstraintError` on insert (concurrent-callback race) and returns the existing row.
+- **i18n (backend text in the reader's language)**: catalogs live in `src/common/i18n/catalog/{en,ro}/` as TypeScript; English defines the `Catalog` type, so a key missing in `ro` fails the build. Render with `translate(locale, key, params)` (ICU via `@messageformat/core`, same engine as the FE); narrow stored/untrusted values with `toLocale()`. Money and dates go in as raw tagged values (`money()`, `day()`, `dayTime()`), never pre-formatted strings. Notification builders return `message: { key: '<module>.<name>', params }`, never finished `title`/`body` text (that shape is for the debug endpoint only); a missing value is passed as `null` and worded by the message. The row stores key + params (migration 062) and the API renders per reader on list, email and push. Every builder has a sample in `test/fixtures/notification-samples.ts`, checked in both languages by `notification-builders.spec.ts`. Email layout helpers take `locale`. Status + how-to: `docs/research/i18n/BACKEND_I18N_PLAN.md`.
 - **Shared singletons**: `EmailService` is exported from a `@Global() EmailModule` registered in AppModule. Don't list `EmailService` as a provider in feature modules — just inject it.
 
 ### RBAC

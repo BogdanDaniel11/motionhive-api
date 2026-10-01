@@ -403,6 +403,91 @@ describe('NotificationService', () => {
       );
     });
 
+    it('renders a catalog message per recipient, in their language', async () => {
+      notificationModel.findOne.mockResolvedValue(null);
+      // The row comes back as stored: English text + key + raw params.
+      notificationModel.create.mockImplementation(
+        (row: Record<string, unknown>) =>
+          Promise.resolve({ ...makeNotificationRow(), ...row }),
+      );
+      preferenceModel.findAll.mockResolvedValue([]);
+      userModel.findAll.mockResolvedValue([
+        { id: 'user-en', email: 'en@test.io', language: 'en' },
+        { id: 'user-ro', email: 'ro@test.io', language: 'ro' },
+      ]);
+      receiptModel.findOrCreate
+        .mockResolvedValueOnce([makeReceiptRow({ id: 'r-en' }), true])
+        .mockResolvedValueOnce([makeReceiptRow({ id: 'r-ro' }), true]);
+
+      await service.notifyMany(['user-en', 'user-ro'], {
+        type: NotificationType.CLIENT_REQUEST_RECEIVED,
+        message: { key: 'client.requestReceived', params: { name: 'Ana' } },
+        data: { screen: 'coaching/pending-requests' },
+        channelOverride: { email: true },
+      });
+
+      expect(notificationModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'New coaching request',
+          body: 'Ana would like to work with you.',
+          messageKey: 'client.requestReceived',
+          messageParams: { name: 'Ana' },
+        }),
+        { transaction: fakeTx },
+      );
+      expect(jobsService.enqueue).toHaveBeenCalledWith(
+        'notifications.email_send',
+        expect.objectContaining({
+          to: 'en@test.io',
+          title: 'New coaching request',
+          body: 'Ana would like to work with you.',
+          locale: 'en',
+          ctaLabel: 'Open MotionHive',
+        }),
+        expect.anything(),
+      );
+      expect(jobsService.enqueue).toHaveBeenCalledWith(
+        'notifications.email_send',
+        expect.objectContaining({
+          to: 'ro@test.io',
+          title: 'Cerere nouă de antrenament',
+          body: 'Ana vrea să se antreneze cu tine.',
+          locale: 'ro',
+          ctaLabel: 'Deschide MotionHive',
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('keeps an uncatalogued notification English end to end', async () => {
+      notificationModel.findOne.mockResolvedValue(null);
+      notificationModel.create.mockResolvedValue(makeNotificationRow());
+      preferenceModel.findAll.mockResolvedValue([]);
+      userModel.findAll.mockResolvedValue([
+        { id: 'user-1', email: 'ro@test.io', language: 'ro' },
+      ]);
+      receiptModel.findOrCreate.mockResolvedValue([makeReceiptRow(), true]);
+
+      await service.notify({
+        userId: 'user-1',
+        type: NotificationType.INVOICE_PAID,
+        title: 'Invoice paid',
+        body: 'Your invoice was paid',
+        data: { screen: 'invoice', entityId: 'inv-9' },
+      });
+
+      // English text in an English layout, not English wrapped in Romanian.
+      expect(jobsService.enqueue).toHaveBeenCalledWith(
+        'notifications.email_send',
+        expect.objectContaining({
+          title: 'Invoice paid',
+          locale: 'en',
+          ctaLabel: 'Open MotionHive',
+        }),
+        expect.anything(),
+      );
+    });
+
     it('throws when called with an empty user list', async () => {
       await expect(
         service.notifyMany([], {

@@ -1,9 +1,13 @@
 import type { NotifyParams } from '../notification/notification.service';
 import { NotificationType } from '../notification/notification.service';
-import { formatSessionTime } from '../notification/format';
+import { dayTime } from '../../common/i18n';
 
 /**
  * Notification builders for the session module.
+ *
+ * Copy lives in the catalog (`notifications.session.*` under
+ * src/common/i18n/catalog). Start times travel as `dayTime()` in the
+ * session's zone and are printed per reader.
  *
  * Builders take **primitives** (id, name, Date) — never Sequelize entities.
  * Entities have lazy associations that explode when an outbox flushes
@@ -41,25 +45,17 @@ interface BookingResult {
 
 // ─── To CLIENT (the person who booked) ────────────────────────────────
 
+/** When the session starts, in the zone the instructor scheduled it in. */
+function when(session: SessionRef) {
+  return dayTime(session.startAt, session.timezone);
+}
+
 /** Booking outcome — confirmed, pending approval, or waitlisted. */
 export function sessionBookedForUser(
   userId: string,
   session: SessionRef,
   result: BookingResult,
 ): NotifyParams {
-  const when = formatSessionTime(session.startAt, session.timezone);
-  const heading =
-    result.status === 'CONFIRMED'
-      ? 'Booking confirmed'
-      : result.status === 'PENDING_APPROVAL'
-        ? 'Booking pending approval'
-        : 'Joined the waitlist';
-  const tail =
-    result.status === 'CONFIRMED'
-      ? `You're in for "${session.title}" on ${when}.`
-      : result.status === 'PENDING_APPROVAL'
-        ? `Waiting for the instructor to approve your booking for "${session.title}" on ${when}.`
-        : `"${session.title}" on ${when} is full — we'll let you know if a seat opens.`;
   return {
     userId,
     // Reuse the lifecycle SESSION_STATUS_CHANGED bucket — informational,
@@ -67,8 +63,15 @@ export function sessionBookedForUser(
     // "BOOKING_CONFIRMED" type; we collapse here to keep the type catalogue
     // stable until we have a clear reason to split.
     type: NotificationType.SESSION_STATUS_CHANGED,
-    title: heading,
-    body: tail,
+    message: {
+      key:
+        result.status === 'CONFIRMED'
+          ? 'session.bookingConfirmed'
+          : result.status === 'PENDING_APPROVAL'
+            ? 'session.bookingPending'
+            : 'session.bookingWaitlisted',
+      params: { title: session.title, when: when(session) },
+    },
     data: { screen: 'sessions', entityId: session.id },
   };
 }
@@ -78,28 +81,53 @@ export function bookingApprovedForUser(
   userId: string,
   session: SessionRef,
 ): NotifyParams {
-  const when = formatSessionTime(session.startAt, session.timezone);
   return {
     userId,
     type: NotificationType.SESSION_STATUS_CHANGED,
-    title: 'Booking approved',
-    body: `You're confirmed for "${session.title}" on ${when}.`,
+    message: {
+      key: 'session.bookingApproved',
+      params: { title: session.title, when: when(session) },
+    },
     data: { screen: 'sessions', entityId: session.id },
   };
 }
 
-/** Client — instructor declined their pending booking. */
+/**
+ * Client — instructor declined their pending booking. `reason` is the
+ * instructor's own words, shown as written.
+ */
 export function bookingDeclinedForUser(
   userId: string,
   session: SessionRef,
   reason: string | null,
 ): NotifyParams {
-  const tail = reason ? ` Reason: ${reason}` : '';
   return {
     userId,
     type: NotificationType.SESSION_STATUS_CHANGED,
-    title: 'Booking declined',
-    body: `Your booking for "${session.title}" was not approved.${tail}`,
+    message: {
+      key: 'session.bookingDeclined',
+      params: { title: session.title, reason: reason || null },
+    },
+    data: { screen: 'user/sessions' },
+  };
+}
+
+/**
+ * Client — their pending booking was turned down by the system because
+ * the session filled up. Its own message (not a `reason` string) so the
+ * explanation is translated.
+ */
+export function bookingDeclinedSessionFullForUser(
+  userId: string,
+  session: SessionRef,
+): NotifyParams {
+  return {
+    userId,
+    type: NotificationType.SESSION_STATUS_CHANGED,
+    message: {
+      key: 'session.bookingDeclinedFull',
+      params: { title: session.title },
+    },
     data: { screen: 'user/sessions' },
   };
 }
@@ -109,12 +137,13 @@ export function bookingPromotedForUser(
   userId: string,
   session: SessionRef,
 ): NotifyParams {
-  const when = formatSessionTime(session.startAt, session.timezone);
   return {
     userId,
     type: NotificationType.SESSION_STATUS_CHANGED,
-    title: "You're in!",
-    body: `A seat opened up — you're now confirmed for "${session.title}" on ${when}.`,
+    message: {
+      key: 'session.bookingPromoted',
+      params: { title: session.title, when: when(session) },
+    },
     data: { screen: 'sessions', entityId: session.id },
   };
 }
@@ -126,14 +155,18 @@ export function sessionCancelledForUser(
   reason: string | null,
   message: string | null,
 ): NotifyParams {
-  const when = formatSessionTime(session.startAt, session.timezone);
-  const tail = reason ? ` Reason: ${reason}.` : '';
-  const note = message ? ` "${message}"` : '';
   return {
     userId,
     type: NotificationType.SESSION_CANCELLED,
-    title: 'Session cancelled',
-    body: `"${session.title}" on ${when} has been cancelled.${tail}${note}`,
+    message: {
+      key: 'session.cancelled',
+      params: {
+        title: session.title,
+        when: when(session),
+        reason: reason || null,
+        note: message || null,
+      },
+    },
     data: { screen: 'user/sessions', queryParams: { tab: 'cancelled' } },
   };
 }
@@ -144,13 +177,17 @@ export function sessionRescheduledForUser(
   session: SessionRef,
   oldStartAt: Date,
 ): NotifyParams {
-  const before = formatSessionTime(oldStartAt, session.timezone);
-  const after = formatSessionTime(session.startAt, session.timezone);
   return {
     userId,
     type: NotificationType.SESSION_RESCHEDULED,
-    title: 'Session rescheduled',
-    body: `"${session.title}" moved from ${before} to ${after}.`,
+    message: {
+      key: 'session.rescheduled',
+      params: {
+        title: session.title,
+        before: dayTime(oldStartAt, session.timezone),
+        after: when(session),
+      },
+    },
     data: { screen: 'sessions', entityId: session.id },
   };
 }
@@ -161,21 +198,16 @@ export function sessionReminderForUser(
   session: SessionRef,
   kind: 'REMINDER_24H' | 'REMINDER_1H',
 ): NotifyParams {
-  const when = formatSessionTime(session.startAt, session.timezone);
-  const heading =
-    kind === 'REMINDER_24H' ? 'Session tomorrow' : 'Session starting soon';
-  const tail =
-    kind === 'REMINDER_24H'
-      ? `"${session.title}" is on ${when}.`
-      : `"${session.title}" starts in about an hour (${when}).`;
+  const is24h = kind === 'REMINDER_24H';
   return {
     userId,
-    type:
-      kind === 'REMINDER_24H'
-        ? NotificationType.SESSION_REMINDER_24H
-        : NotificationType.SESSION_REMINDER_1H,
-    title: heading,
-    body: tail,
+    type: is24h
+      ? NotificationType.SESSION_REMINDER_24H
+      : NotificationType.SESSION_REMINDER_1H,
+    message: {
+      key: is24h ? 'session.reminder24h' : 'session.reminder1h',
+      params: { title: session.title, when: when(session) },
+    },
     data: { screen: 'sessions', entityId: session.id },
   };
 }
@@ -192,8 +224,14 @@ export function sessionFollowUpForUser(
     // notification-defaults.ts). Users would expect to receive these
     // even if not opening the app the same day.
     type: NotificationType.SESSION_FOLLOW_UP,
-    title: `Note from your instructor — ${session.title}`,
-    body: message.length > 240 ? `${message.slice(0, 240)}…` : message,
+    message: {
+      key: 'session.followUp',
+      params: {
+        title: session.title,
+        // The instructor's own words, shown as written.
+        text: message.length > 240 ? `${message.slice(0, 240)}…` : message,
+      },
+    },
     data: { screen: 'sessions', entityId: session.id },
   };
 }
@@ -206,12 +244,13 @@ export function participantJoinedForInstructor(
   participantName: string | null,
   session: SessionRef,
 ): NotifyParams {
-  const who = participantName ?? 'A user';
   return {
     userId: instructorId,
     type: NotificationType.PARTICIPANT_JOINED,
-    title: 'New booking',
-    body: `${who} booked into "${session.title}".`,
+    message: {
+      key: 'session.participantJoined',
+      params: { name: participantName, title: session.title },
+    },
     data: { screen: 'coaching/sessions', entityId: session.id },
   };
 }
@@ -222,12 +261,13 @@ export function participantLeftForInstructor(
   participantName: string | null,
   session: SessionRef,
 ): NotifyParams {
-  const who = participantName ?? 'A user';
   return {
     userId: instructorId,
     type: NotificationType.PARTICIPANT_LEFT,
-    title: 'Booking cancelled',
-    body: `${who} cancelled their booking for "${session.title}".`,
+    message: {
+      key: 'session.participantLeft',
+      params: { name: participantName, title: session.title },
+    },
     data: { screen: 'coaching/sessions', entityId: session.id },
   };
 }
