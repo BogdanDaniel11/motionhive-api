@@ -8,7 +8,7 @@
  *     attention-grabbing emails, and a dark footer carrying the
  *     trader identity + policy links (see `COMPANY` / `LEGAL_URLS`).
  *   - The helpers (`heading`, `paragraph`, `primaryButton`,
- *     `calloutBox`, `dataRow`, `personCard`, `dateTimeBlock`,
+ *     `calloutBox`, `dataRow`, `personCard`,
  *     `eyebrow`, `chip`, …) keep individual templates declarative.
  *     They aren't a framework — just inline-style HTML strings tuned
  *     for email-client compatibility (Outlook MSO conditionals,
@@ -769,42 +769,6 @@ export function personCard(params: {
 }
 
 /**
- * Date+time block — prominent display for the time-sensitive
- * category. Takes a date label, a time label, and a timezone.
- * Renders as a teal-accented card with the date as the headline,
- * time below, and timezone in muted tail copy.
- */
-export function dateTimeBlock(params: {
-  date: string;
-  time: string;
-  timezone?: string;
-  location?: string;
-}): string {
-  const { date, time, timezone, location } = params;
-  return `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;background-color:${COLORS.teal50};border:1px solid ${COLORS.teal100};border-radius:16px;">
-      <tr>
-        <td style="padding:20px 22px;">
-          <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-            <tr class="stack-row">
-              <td style="vertical-align:top;border-right:1px solid ${COLORS.teal100};padding-right:18px;width:55%;">
-                <div style="font-family:${FONT_DISPLAY};font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${COLORS.teal700};line-height:1.2;">When</div>
-                <div style="margin-top:6px;font-family:${FONT_DISPLAY};font-size:20px;font-weight:600;color:${COLORS.navy900};letter-spacing:-0.01em;line-height:1.25;">${date}</div>
-                <div style="margin-top:4px;font-family:${FONT_DISPLAY};font-size:18px;font-weight:500;color:${COLORS.navy900};letter-spacing:-0.01em;line-height:1.3;">${time}</div>
-                ${timezone ? `<div style="margin-top:4px;font-family:${FONT_BODY};font-size:12px;color:${COLORS.ink2};line-height:1.4;">${timezone}</div>` : ''}
-              </td>
-              <td style="vertical-align:top;padding-left:18px;">
-                <div style="font-family:${FONT_DISPLAY};font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${COLORS.teal700};line-height:1.2;">Where</div>
-                <div style="margin-top:6px;font-family:${FONT_BODY};font-size:15px;color:${COLORS.navy900};line-height:1.5;">${location || 'See details in the app'}</div>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>`;
-}
-
-/**
  * Standalone honey-50 hero band the template can render INSIDE the
  * content area — useful when you want the band to sit above the
  * eyebrow rather than under the header rule. Most templates won't
@@ -823,10 +787,13 @@ export function divider(): string {
   return `<hr class="mh-line" style="border:none;border-top:1px solid ${COLORS.lineSolid};margin:24px 0;">`;
 }
 
-export function expiryNote(text: string): string {
+export function expiryNote(
+  text: string,
+  locale: Locale = DEFAULT_LOCALE,
+): string {
   return calloutBox(
     'warning',
-    `<strong style="font-weight:600;">Heads up &middot;</strong> ${text}`,
+    `<strong style="font-weight:600;">${translate(locale, 'email.layout.headsUp')} &middot;</strong> ${text}`,
   );
 }
 

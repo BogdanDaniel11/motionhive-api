@@ -1,4 +1,4 @@
-import { escapeHtml } from '../../utils/html.utils';
+import type { Locale } from '../../i18n';
 import {
   baseLayout,
   divider,
@@ -10,106 +10,123 @@ import {
   securityNote,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
+
+export interface GroupJoinRequestDecidedParams {
+  decision: 'approved' | 'rejected';
+  requesterFirstName: string | null;
+  groupName: string;
+  groupLink: string;
+  groupsListLink: string;
+  locale: Locale;
+}
 
 /**
  * Sent to the user who requested to join a group, once the owner
  * decides. The `decision` flag selects the right copy ("you're in"
  * vs "not this time") so one template serves both paths.
  *
- *  - APPROVED → 'confirmation' category, primary "Open group" CTA
- *  - REJECTED → 'update' category, no CTA, soft language
+ *  - APPROVED → 'confirmation' category, "Open group" CTA
+ *  - REJECTED → 'update' category, "Find another group" CTA, soft language
  */
-export function groupJoinRequestDecidedTemplate(params: {
-  decision: 'approved' | 'rejected';
-  requesterFirstName: string | null;
-  groupName: string;
-  groupLink: string;
-  groupsListLink: string;
-}): string {
-  const { decision, requesterFirstName, groupName, groupLink, groupsListLink } =
-    params;
-  const safeFirst = escapeHtml(requesterFirstName);
-  const safeGroup = escapeHtml(groupName);
-  const greeting = requesterFirstName ? `Hi ${safeFirst},` : 'Hi there,';
+export function groupJoinRequestDecidedTemplate(
+  params: GroupJoinRequestDecidedParams,
+): string {
+  const {
+    decision,
+    requesterFirstName,
+    groupName,
+    groupLink,
+    groupsListLink,
+    locale,
+  } = params;
+  const c = emailCopy(locale, 'email.group.joinRequestDecided');
+  const greeting = c.html('greeting', {
+    firstName: requesterFirstName || null,
+  });
+  const group = { group: groupName };
 
   if (decision === 'approved') {
     const content = `
-      ${eyebrow('REQUEST APPROVED', 'confirmation')}
+      ${eyebrow(c.html('approved.eyebrow'), 'confirmation', locale)}
       ${paragraph(greeting)}
-      ${heading("You're in!")}
-      ${subheading(`The owner approved your request to join ${safeGroup}`)}
-      ${paragraph(`You're now a member of <strong>${safeGroup}</strong>. Jump in to see the latest posts, sessions and people.`)}
-      ${secondaryButton('Open group', groupLink)}
+      ${heading(c.html('approved.heading'))}
+      ${subheading(c.html('approved.subheading', group))}
+      ${paragraph(c.html('approved.body', group))}
+      ${secondaryButton(c.html('approved.cta'), groupLink)}
       ${divider()}
-      ${paragraph('Welcome aboard.')}
+      ${paragraph(c.html('approved.closing'))}
     `;
     return baseLayout(content, {
-      preheader: `Your request to join ${groupName} was approved`,
+      preheader: c.html('approved.preheader', group),
       category: 'confirmation',
+      locale,
     });
   }
 
   // rejected
   const content = `
-    ${eyebrow('UPDATE', 'update')}
+    ${eyebrow('', 'update', locale)}
     ${paragraph(greeting)}
-    ${heading('Request update')}
-    ${subheading(`The owner of ${safeGroup} couldn't add you this time`)}
-    ${paragraph(`The owner of <strong>${safeGroup}</strong> declined your request to join. This isn't personal — sometimes groups are full, paused, or only accepting people they already know.`)}
-    ${secondaryButton('Find another group', groupsListLink)}
-    ${securityNote('You can request to join again later if the group opens up.')}
+    ${heading(c.html('rejected.heading'))}
+    ${subheading(c.html('rejected.subheading', group))}
+    ${paragraph(c.html('rejected.body', group))}
+    ${secondaryButton(c.html('rejected.cta'), groupsListLink)}
+    ${securityNote(c.html('rejected.note'))}
   `;
   return baseLayout(content, {
-    preheader: `Update on your request to join ${groupName}`,
+    preheader: c.html('rejected.preheader', group),
     category: 'update',
+    locale,
   });
 }
 
-export function groupJoinRequestDecidedTemplateText(params: {
-  decision: 'approved' | 'rejected';
-  requesterFirstName: string | null;
-  groupName: string;
-  groupLink: string;
-  groupsListLink: string;
-}): string {
-  const { decision, requesterFirstName, groupName, groupLink, groupsListLink } =
-    params;
-  const greeting = requesterFirstName
-    ? `Hi ${requesterFirstName},`
-    : 'Hi there,';
+export function groupJoinRequestDecidedTemplateText(
+  params: GroupJoinRequestDecidedParams,
+): string {
+  const {
+    decision,
+    requesterFirstName,
+    groupName,
+    groupLink,
+    groupsListLink,
+    locale,
+  } = params;
+  const c = emailCopy(locale, 'email.group.joinRequestDecided');
+  const greeting = c.text('greeting', {
+    firstName: requesterFirstName || null,
+  });
+  const group = { group: groupName };
 
   if (decision === 'approved') {
     return plainTextLayout({
-      preheader: `Your request to join ${groupName} was approved`,
+      preheader: c.text('approved.preheader', group),
+      locale,
       sections: [
         {
-          heading: "You're in",
+          heading: c.text('approved.heading'),
           body: [
             greeting,
-            `The owner approved your request to join ${groupName}. You're now a member.`,
-            'Jump in to see the latest posts, sessions and people.',
+            `${c.text('approved.subheading', group)}.`,
+            c.text('approved.body', group),
           ],
-          ctas: [{ label: 'Open group', url: groupLink }],
+          ctas: [{ label: c.text('approved.cta'), url: groupLink }],
         },
-        { body: ['Welcome aboard.'] },
+        { body: [c.text('approved.closing')] },
       ],
     });
   }
 
   return plainTextLayout({
-    preheader: `Update on your request to join ${groupName}`,
+    preheader: c.text('rejected.preheader', group),
+    locale,
     sections: [
       {
-        heading: 'Request update',
-        body: [
-          greeting,
-          `The owner of ${groupName} declined your request to join. This isn't personal — sometimes groups are full, paused, or only accepting people they already know.`,
-        ],
-        ctas: [{ label: 'Find another group', url: groupsListLink }],
+        heading: c.text('rejected.heading'),
+        body: [greeting, c.text('rejected.body', group)],
+        ctas: [{ label: c.text('rejected.cta'), url: groupsListLink }],
       },
-      {
-        body: ['You can request to join again later if the group opens up.'],
-      },
+      { body: [c.text('rejected.note')] },
     ],
   });
 }

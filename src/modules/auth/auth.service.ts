@@ -15,6 +15,7 @@ import { Op } from 'sequelize';
 import { User } from '../user/entities/user.entity';
 import { UserService } from '../user/user.service';
 import type { OAuthProfile } from '../user/user.service';
+import { toLocale } from '../../common/i18n';
 import type { Locale } from '../../common/i18n';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { RegisterDto } from './dto/register.dto';
@@ -134,7 +135,11 @@ export class AuthService {
       this.logger.log(`User registered: ${user.email}`, 'AuthService');
 
       this.emailService
-        .sendEmailVerification(user.email, verificationToken)
+        .sendEmailVerification(
+          user.email,
+          verificationToken,
+          toLocale(user.language),
+        )
         .catch((err) =>
           this.logger.error(
             `Failed to send verification email: ${err.message}`,
@@ -277,7 +282,13 @@ export class AuthService {
     // success response; the email is reassurance + an out for victims
     // of session hijack.
     this.emailService
-      .sendPasswordChangedEmail(user.email, user.firstName, new Date())
+      .sendPasswordChangedEmail(
+        user.email,
+        user.firstName,
+        new Date(),
+        toLocale(user.language),
+        user.timezone,
+      )
       .catch((err: Error) =>
         this.logger.error(
           `Failed to send password-changed email to ${user.email}: ${err.message}`,
@@ -556,7 +567,11 @@ export class AuthService {
       const resetToken =
         await this.userService.generatePasswordResetToken(user);
 
-      await this.emailService.sendPasswordResetEmail(user.email, resetToken);
+      await this.emailService.sendPasswordResetEmail(
+        user.email,
+        resetToken,
+        toLocale(user.language),
+      );
 
       this.logger.log(
         `Password reset requested for ${user.email}`,
@@ -627,7 +642,7 @@ export class AuthService {
     this.logger.log(`Email verified for user: ${user.email}`, 'AuthService');
 
     this.emailService
-      .sendWelcomeEmail(user.email, user.firstName)
+      .sendWelcomeEmail(user.email, user.firstName, toLocale(user.language))
       .catch((err) =>
         this.logger.error(
           `Failed to send welcome email: ${err.message}`,
@@ -673,6 +688,7 @@ export class AuthService {
       await this.emailService.sendEmailVerification(
         user.email,
         verificationToken,
+        toLocale(user.language),
       );
 
       this.logger.log(

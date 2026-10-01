@@ -17,7 +17,7 @@ export interface MoneyParam {
 
 export interface DateParam {
   $date: string;
-  style: 'day' | 'dayTime' | 'month';
+  style: 'day' | 'dayTime' | 'month' | 'moment';
   timeZone?: string;
 }
 
@@ -56,6 +56,15 @@ export function dayTime(date: Date | string, timeZone: string): DateParam {
  */
 export function month(monthKey: string): DateParam {
   return { $date: `${monthKey}-01`, style: 'month' };
+}
+
+/**
+ * An exact moment, year and zone included, for the record ("your
+ * password was changed on …"). Renders as `Thu 1 Oct 2026, 18:30 EEST`
+ * / `joi, 1 octombrie 2026 la 18:30`.
+ */
+export function moment(date: Date | string, timeZone?: string): DateParam {
+  return { $date: toIso(date), style: 'moment', timeZone };
 }
 
 export function formatMoney(
@@ -115,6 +124,37 @@ export function formatDayTime(
   });
 }
 
+export function formatMoment(
+  date: Date | string,
+  timeZone: string | undefined,
+  locale: Locale,
+): string {
+  return new Date(date).toLocaleString(INTL_LOCALE[locale], {
+    ...DAY_TIME_FORMAT[locale],
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    // English keeps the zone ("EEST"); Romanian readers do not use those
+    // abbreviations, and the time is already in their own zone.
+    timeZoneName: locale === 'en' ? 'short' : undefined,
+    timeZone,
+  });
+}
+
+function formatDate(value: DateParam, locale: Locale): string {
+  switch (value.style) {
+    case 'day':
+      return formatDay(value.$date, locale);
+    case 'month':
+      return formatMonth(value.$date, locale);
+    case 'moment':
+      return formatMoment(value.$date, value.timeZone, locale);
+    default:
+      return formatDayTime(value.$date, value.timeZone, locale);
+  }
+}
+
 /**
  * Turn tagged values into display strings for one locale. Plain values
  * pass through untouched so ICU `plural` / `select` still see numbers
@@ -131,11 +171,7 @@ export function resolveParams(
       out[name] =
         '$money' in value
           ? formatMoney(value.$money, value.currency, locale)
-          : value.style === 'day'
-            ? formatDay(value.$date, locale)
-            : value.style === 'month'
-              ? formatMonth(value.$date, locale)
-              : formatDayTime(value.$date, value.timeZone, locale);
+          : formatDate(value, locale);
     } else {
       out[name] = value;
     }

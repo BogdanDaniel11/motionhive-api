@@ -38,6 +38,7 @@ import {
   PaginatedResponse,
 } from '../../../common/dto/pagination.dto';
 import { CreateSubscriptionDto } from '../dto/create-subscription.dto';
+import { toLocale } from '../../../common/i18n';
 
 // Stripe API versions vary on whether current_period_start/end live
 // directly on Subscription or nested. Safe accessor via Record cast.
@@ -333,21 +334,20 @@ export class SubscriptionService {
     const instructorName =
       [instructor?.firstName, instructor?.lastName]
         .filter((s): s is string => !!s)
-        .join(' ') || 'Your trainer';
-    const cycleLabel = product.interval
-      ? product.intervalCount && product.intervalCount > 1
-        ? `every ${product.intervalCount} ${product.interval}s`
-        : `${product.interval}ly`
-      : null;
-    const amountLabel = `${(product.amountCents / 100).toFixed(2)} ${product.currency.toUpperCase()}`;
+        .join(' ') || null;
+    // Amount and billing cycle go in raw: the email words and formats
+    // them in the client's language.
     await this.emailService.sendSubscriptionSetupEmail({
       to: client.email,
       instructorName,
       planName: product.name,
-      amountLabel,
-      cycleLabel,
+      amountCents: product.amountCents,
+      currency: product.currency,
+      interval: product.interval,
+      intervalCount: product.intervalCount,
       setupUrl: confirmationUrl,
       recipientName: client.firstName,
+      locale: toLocale(client.language),
     });
   }
 

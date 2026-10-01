@@ -55,6 +55,7 @@ import {
   DecideJoinRequestDto,
   JoinRequestDecision,
 } from './dto/decide-join-request.dto';
+import { toLocale } from '../../common/i18n';
 
 /**
  * Group Service
@@ -441,7 +442,7 @@ export class GroupService {
         attributes: ['firstName', 'lastName'],
       }),
       this.userModel.findByPk(group.instructorId, {
-        attributes: ['email', 'firstName'],
+        attributes: ['email', 'firstName', 'language'],
       }),
     ]);
     const memberName =
@@ -468,9 +469,10 @@ export class GroupService {
         .sendGroupMemberLeftEmail({
           to: owner.email,
           ownerFirstName: owner.firstName,
-          memberName: memberName ?? 'A member',
+          memberName,
           groupName: group.name,
           groupId: group.id,
+          locale: toLocale(owner.language),
         })
         .catch((err: Error) =>
           this.logger.error(
@@ -626,7 +628,7 @@ export class GroupService {
     // Email the removed member so they know they lost access. Best-
     // effort; transport failures must not turn the 200 into a 500.
     const removedUser = await this.userModel.findByPk(memberId, {
-      attributes: ['email', 'firstName'],
+      attributes: ['email', 'firstName', 'language'],
     });
     if (removedUser?.email) {
       this.emailService
@@ -634,6 +636,7 @@ export class GroupService {
           to: removedUser.email,
           memberFirstName: removedUser.firstName,
           groupName: group.name,
+          locale: toLocale(removedUser.language),
         })
         .catch((err: Error) =>
           this.logger.error(
@@ -1075,17 +1078,18 @@ export class GroupService {
     // Email the owner so they actually see the request (in-app bells
     // are easy to miss). Best-effort.
     const owner = await this.userModel.findByPk(group.instructorId, {
-      attributes: ['email', 'firstName'],
+      attributes: ['email', 'firstName', 'language'],
     });
     if (owner?.email) {
       this.emailService
         .sendGroupJoinRequestReceivedEmail({
           to: owner.email,
           ownerFirstName: owner.firstName,
-          requesterName: requesterName ?? 'Someone',
+          requesterName,
           groupName: group.name,
           groupId: group.id,
           requestId: request.id,
+          locale: toLocale(owner.language),
         })
         .catch((err: Error) =>
           this.logger.error(
@@ -1237,7 +1241,7 @@ export class GroupService {
     // Email the requester so they don't have to keep checking the
     // bell. Best-effort.
     const requester = await this.userModel.findByPk(request.userId, {
-      attributes: ['email', 'firstName'],
+      attributes: ['email', 'firstName', 'language'],
     });
     if (requester?.email) {
       this.emailService
@@ -1247,6 +1251,7 @@ export class GroupService {
           requesterFirstName: requester.firstName,
           groupName: group.name,
           groupId: group.id,
+          locale: toLocale(requester.language),
         })
         .catch((err: Error) =>
           this.logger.error(
@@ -1630,22 +1635,22 @@ export class GroupService {
     const groupRef = { id: group.id, name: group.name };
     const [newOwnerUser, oldOwnerUser] = await Promise.all([
       this.userModel.findByPk(newOwnerId, {
-        attributes: ['email', 'firstName', 'lastName'],
+        attributes: ['email', 'firstName', 'lastName', 'language'],
       }),
       this.userModel.findByPk(currentOwnerId, {
-        attributes: ['email', 'firstName', 'lastName'],
+        attributes: ['email', 'firstName', 'lastName', 'language'],
       }),
     ]);
     const newOwnerName =
       [newOwnerUser?.firstName, newOwnerUser?.lastName]
         .filter(Boolean)
         .join(' ')
-        .trim() || 'The new owner';
+        .trim() || null;
     const oldOwnerName =
       [oldOwnerUser?.firstName, oldOwnerUser?.lastName]
         .filter(Boolean)
         .join(' ')
-        .trim() || 'The previous owner';
+        .trim() || null;
 
     await Promise.all([
       this.notificationService
@@ -1673,6 +1678,7 @@ export class GroupService {
               otherPartyName: oldOwnerName,
               groupName: group.name,
               groupId: group.id,
+              locale: toLocale(newOwnerUser.language),
             })
             .catch((err: Error) =>
               this.logger.error(
@@ -1690,6 +1696,7 @@ export class GroupService {
               otherPartyName: newOwnerName,
               groupName: group.name,
               groupId: group.id,
+              locale: toLocale(oldOwnerUser.language),
             })
             .catch((err: Error) =>
               this.logger.error(
@@ -1873,9 +1880,10 @@ export class GroupService {
       );
 
     // Email the member too. The notify call covers the bell; this
-    // covers the inbox. Keep label strings human, not enum values.
+    // covers the inbox. Roles go in as enum values; the email words
+    // them in the reader's language.
     const member = await this.userModel.findByPk(targetUserId, {
-      attributes: ['email', 'firstName'],
+      attributes: ['email', 'firstName', 'language'],
     });
     if (member?.email) {
       this.emailService
@@ -1884,8 +1892,9 @@ export class GroupService {
           memberFirstName: member.firstName,
           groupName: group.name,
           groupId: group.id,
-          oldRoleLabel: humanizeGroupRole(oldRole),
-          newRoleLabel: humanizeGroupRole(newRole),
+          oldRole,
+          newRole,
+          locale: toLocale(member.language),
         })
         .catch((err: Error) =>
           this.logger.error(
@@ -1896,24 +1905,5 @@ export class GroupService {
     }
 
     return target;
-  }
-}
-
-/**
- * Map the internal GroupMemberRole enum to a copy-safe label. Kept as
- * a free function so the role->copy table sits next to the only place
- * it's used; the in-app notification builder has its own ROLE_LABELS
- * map for the same reason.
- */
-function humanizeGroupRole(role: GroupMemberRole): string {
-  switch (role) {
-    case GroupMemberRole.OWNER:
-      return 'Owner';
-    case GroupMemberRole.MODERATOR:
-      return 'Moderator';
-    case GroupMemberRole.MEMBER:
-      return 'Member';
-    default:
-      return 'Member';
   }
 }

@@ -26,7 +26,7 @@ import { OrphanedWebhookError } from './webhook-errors';
 import { EmailService } from '../../../common/services/email.service';
 import { NotificationService } from '../../notification/notification.service';
 import { NotificationOutbox } from '../../notification/notification-outbox';
-import { DEFAULT_LOCALE, formatMoney } from '../../../common/i18n';
+import { toLocale } from '../../../common/i18n';
 import {
   invoiceCreatedForClient,
   invoicePaidForClient,
@@ -766,30 +766,27 @@ export class InvoiceService {
         [instructor?.firstName, instructor?.lastName]
           .filter(Boolean)
           .join(' ')
-          .trim() || 'Your instructor';
-      // English until the invoice email itself is localized.
-      const amountLabel = formatMoney(
-        invoice.amountDueCents,
-        invoice.currency,
-        DEFAULT_LOCALE,
-      );
-      const dueDateLabel = invoice.dueDate
-        ? new Date(invoice.dueDate).toLocaleDateString('en-GB', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
-          })
+          .trim() || null;
+      // The override address belongs to no account we can look up, so
+      // write in the client's language when the invoice has a client,
+      // and the instructor's otherwise.
+      const client = invoice.clientId
+        ? ((await this.sequelize.models.User.findByPk(invoice.clientId, {
+            attributes: ['language'],
+          })) as User | null)
         : null;
 
       await this.emailService.sendInvoiceEmail({
         to: overrideEmail as string,
         instructorName,
-        amountLabel,
-        dueDateLabel,
+        amountCents: invoice.amountDueCents,
+        currency: invoice.currency,
+        dueDate: invoice.dueDate,
         invoiceNumber: invoice.number,
         hostedInvoiceUrl: invoice.hostedInvoiceUrl,
         invoicePdfUrl: invoice.invoicePdf,
         recipientName: null,
+        locale: toLocale(client?.language ?? instructor?.language),
       });
       this.logger.log(
         `Invoice ${invoice.id} delivered to override address ${overrideEmail} (on-file: ${onFileEmail ?? 'none'})`,

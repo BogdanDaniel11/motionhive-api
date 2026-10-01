@@ -1,11 +1,10 @@
 # Backend i18n: notifications + emails in Romanian
 
-Status (2026-10-01): **notifications done, uncommitted on `develop`.** Phases 0, 1 and 2 are
-built: all 64 notification messages (61 builders across 8 modules) come from the catalog in
-English and Romanian, and render per reader. Remaining: the ~30 direct email templates
-(phase 3) and applying the owner's review of the Romanian copy (phase 4; review sheet:
-`motionhive-ro-notifications-review.xlsx`). See "As built" below; where it differs from the
-original "Design" section, "As built" wins.
+Status (2026-10-01): **done.** Notifications (phase 2) and every transactional email (phase 3)
+render in the reader's language, English or Romanian. The Romanian was checked by blind
+back-translation and fixed; the owner's review sheets are
+`motionhive-ro-notifications-review.xlsx` and `motionhive-ro-emails-review.xlsx`. See "As built"
+below; where it differs from the original "Design" section, "As built" wins.
 
 ## As built
 
@@ -71,6 +70,27 @@ email that formatted money with it now calls `formatMoney(..., DEFAULT_LOCALE)`.
 Dates: English keeps the compact form (`Mon 15 Jun, 21:00`); Romanian spells weekday and
 month out (`luni, 15 iunie la 21:00`), because its abbreviations carry full stops that read
 as broken punctuation inside a sentence.
+
+### Emails
+
+- Copy lives in `catalog/{en,ro}/email/<domain>.ts`, one node per template:
+  `email.<domain>.<template>.<part>` (`subject`, `preheader`, `heading`, `body`, `cta`, …).
+  `layout.ts` is the frame every email shares.
+- Templates read copy through `emailCopy(locale, 'email.<domain>.<template>')`
+  (`src/common/email/_layouts/copy.ts`): `c.html(part, params)` escapes the whole rendered
+  sentence, values included, and turns `**bold**` into `<strong>`; `c.text(part, params)` is the
+  plain-text version. So templates pass raw values and never put HTML in the catalog.
+- Every template and every `EmailService.sendXxx` takes a `locale`. Subjects come from the
+  catalog (`translate(locale, 'email.<domain>.<template>.subject', params)`).
+- Which language: the recipient's `user.language`; for someone without an account (client and
+  group invites, friend invites, coach suggestions, an invoice sent to another address) the
+  sender's; for the public waitlist and feedback forms the `language` the page sends.
+- Every email has samples in `test/fixtures/email-samples.ts`. `email-templates.spec.ts` renders
+  each in every language (whole sentences, no leftover ICU, no markup in the text part,
+  Romanian typography, escaping of hostile values), and `scripts/send-email-previews.ts` sends
+  the same samples to a real inbox (`--locale en|ro|both`, `--only <name>`).
+- Removed: the session cancelled / rescheduled / reminder / participant-status emails, which
+  nothing called (the notification emails cover those events).
 
 ### Decisions taken (were open)
 

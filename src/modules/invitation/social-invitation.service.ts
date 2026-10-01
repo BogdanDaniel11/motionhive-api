@@ -11,6 +11,7 @@ import { EmailService } from '../../common/services';
 import { User } from '../user/entities/user.entity';
 import { SendFriendInviteDto } from './dto/send-friend-invite.dto';
 import { SuggestInstructorDto } from './dto/suggest-instructor.dto';
+import { toLocale } from '../../common/i18n';
 
 /**
  * Lightweight "social" invitation flows used by the home page —
@@ -40,7 +41,7 @@ export class SocialInvitationService {
     dto: SendFriendInviteDto,
   ): Promise<void> {
     const inviter = await this.userModel.findByPk(inviterId, {
-      attributes: ['id', 'firstName', 'lastName', 'email'],
+      attributes: ['id', 'firstName', 'lastName', 'email', 'language'],
     });
     if (!inviter) {
       // Shouldn't happen — JWT guard ran upstream — but fail loud if it does.
@@ -53,14 +54,15 @@ export class SocialInvitationService {
     }
 
     const inviterName =
-      `${inviter.firstName ?? ''} ${inviter.lastName ?? ''}`.trim() ||
-      'A friend';
+      `${inviter.firstName ?? ''} ${inviter.lastName ?? ''}`.trim() || null;
 
     await this.emailService.sendFriendInviteEmail(
       target,
       inviterName,
       inviter.id,
       dto.personalMessage?.trim() || undefined,
+      // The friend has no account yet: write in the inviter's language.
+      toLocale(inviter.language),
     );
 
     this.logger.log(
@@ -74,7 +76,7 @@ export class SocialInvitationService {
     dto: SuggestInstructorDto,
   ): Promise<void> {
     const recommender = await this.userModel.findByPk(recommenderId, {
-      attributes: ['id', 'firstName', 'lastName', 'email'],
+      attributes: ['id', 'firstName', 'lastName', 'email', 'language'],
     });
     if (!recommender) {
       throw new BadRequestException('Recommender not found.');
@@ -87,13 +89,15 @@ export class SocialInvitationService {
 
     const recommenderName =
       `${recommender.firstName ?? ''} ${recommender.lastName ?? ''}`.trim() ||
-      'A MotionHive user';
+      null;
 
     await this.emailService.sendInstructorSuggestionEmail(
       target,
       dto.coachName.trim(),
       recommenderName,
       dto.note?.trim() || undefined,
+      // The coach has no account yet: write in the recommender's language.
+      toLocale(recommender.language),
     );
 
     this.logger.log(

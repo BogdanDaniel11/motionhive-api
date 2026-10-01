@@ -33,7 +33,7 @@ describe('translate', () => {
       translate('ro', 'notifications.client.requestReceived.body', {
         name: 'Ana Pop',
       }),
-    ).toBe('Ana Pop vrea să se antreneze cu tine.');
+    ).toBe('Ana Pop vrea să te aibă ca antrenor.');
   });
 
   it('lets the message word a missing name, per language', () => {
@@ -42,7 +42,7 @@ describe('translate', () => {
       'A user would like to work with you.',
     );
     expect(translate('ro', key, { name: null })).toBe(
-      'Cineva vrea să se antreneze cu tine.',
+      'Cineva vrea să te aibă ca antrenor.',
     );
   });
 });

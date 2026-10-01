@@ -43,6 +43,6 @@ export const group: Catalog['notifications']['group'] = {
   },
   roleChanged: {
     title: 'Rolul tău în grup s-a schimbat',
-    body: 'Ești acum {role, select, OWNER {administrator} MODERATOR {moderator} other {membru simplu}} în {group, select, null {grup} other {grupul „{group}”}}.',
+    body: 'Ești acum {role, select, OWNER {administrator} MODERATOR {moderator} other {membru obișnuit}} în {group, select, null {grup} other {grupul „{group}”}}.',
   },
 };

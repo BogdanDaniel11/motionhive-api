@@ -2,8 +2,8 @@ import type { Catalog } from '../..';
 
 export const client: Catalog['notifications']['client'] = {
   requestReceived: {
-    title: 'Cerere nouă de antrenament',
-    body: '{name, select, null {Cineva} other {{name}}} vrea să se antreneze cu tine.',
+    title: 'Cerere nouă',
+    body: '{name, select, null {Cineva} other {{name}}} vrea să te aibă ca antrenor.',
   },
   requestAccepted: {
     title: 'Cererea ta a fost acceptată',
@@ -11,7 +11,7 @@ export const client: Catalog['notifications']['client'] = {
   },
   requestDeclined: {
     title: 'Cererea ta a fost refuzată',
-    body: '{name, select, null {Antrenorul} other {{name}}} nu ți-a acceptat cererea de antrenament.',
+    body: '{name, select, null {Antrenorul} other {{name}}} nu ți-a acceptat cererea.',
   },
   invitationReceived: {
     title: 'Invitație de la un antrenor',

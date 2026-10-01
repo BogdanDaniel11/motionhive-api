@@ -1,3 +1,4 @@
+import { formatDay, formatMoney, Locale, money } from '../../i18n';
 import { escapeHtml } from '../../utils/html.utils';
 import {
   baseLayout,
@@ -12,6 +13,7 @@ import {
   secondaryButton,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
 
 /**
  * Invoice send email (override-email path).
@@ -21,109 +23,129 @@ import {
  * `sendInvoice` endpoint always targets the customer's saved email,
  * so for a one-off override we take over delivery from our side and
  * link to the hosted invoice page Stripe already generated.
+ *
+ * The amount and due date arrive raw and are formatted here, in the
+ * reader's language.
  */
-export function invoiceSendTemplate(params: {
-  instructorName: string;
-  amountLabel: string;
-  dueDateLabel: string | null;
+export interface InvoiceSendParams {
+  /** `null` when the instructor has no name on file; the copy words that case. */
+  instructorName: string | null;
+  /** Amount due, in minor units. */
+  amountCents: number;
+  currency: string;
+  dueDate: Date | string | null;
   invoiceNumber: string | null;
   hostedInvoiceUrl: string;
   invoicePdfUrl: string | null;
   recipientName?: string | null;
-}): string {
+  /** The recipient's language. */
+  locale: Locale;
+}
+
+export function invoiceSendTemplate(params: InvoiceSendParams): string {
   const {
-    instructorName,
-    amountLabel,
-    dueDateLabel,
-    invoiceNumber,
+    amountCents,
+    currency,
+    dueDate,
     hostedInvoiceUrl,
     invoicePdfUrl,
-    recipientName,
+    locale,
   } = params;
+  const c = emailCopy(locale, 'email.invoice.send');
+  const instructor = params.instructorName || null;
+  const ref = params.invoiceNumber || null;
+  const name = params.recipientName || null;
 
-  const safeInstructor = escapeHtml(instructorName);
-  const safeAmount = escapeHtml(amountLabel);
-  const safeDue = escapeHtml(dueDateLabel);
-  const safeNumber = escapeHtml(invoiceNumber);
-  const greeting = recipientName
-    ? `Hi ${escapeHtml(recipientName)},`
-    : 'Hi there,';
-
+  // The row is left out when Stripe has not numbered the invoice yet.
   const rows =
-    dataRow('Invoice #', invoiceNumber ? safeNumber : '—') +
-    dataRow('From', safeInstructor) +
-    dataRow('Amount', safeAmount) +
-    (dueDateLabel ? dataRow('Due', safeDue) : '');
+    (ref ? dataRow(c.html('numberLabel'), escapeHtml(ref)) : '') +
+    dataRow(
+      c.html('fromLabel'),
+      instructor ? escapeHtml(instructor) : c.html('fromFallback'),
+    ) +
+    dataRow(
+      c.html('amountLabel'),
+      escapeHtml(formatMoney(amountCents, currency, locale)),
+    ) +
+    (dueDate
+      ? dataRow(c.html('dueLabel'), escapeHtml(formatDay(dueDate, locale)))
+      : '');
 
   const content = `
-    ${eyebrow('INVOICE', 'action')}
-    ${paragraph(greeting)}
-    ${heading('You have a new invoice')}
-    ${subheading(`${safeInstructor} sent you an invoice on MotionHive`)}
+    ${eyebrow(c.html('eyebrow'), 'action', locale)}
+    ${paragraph(c.html('greeting', { name }))}
+    ${heading(c.html('heading'))}
+    ${subheading(c.html('subheading', { instructor }))}
     ${dataCard(rows)}
-    ${primaryButton('View &amp; pay invoice', hostedInvoiceUrl)}
-    ${invoicePdfUrl ? secondaryButton('Download PDF', invoicePdfUrl) : ''}
+    ${primaryButton(c.html('cta'), hostedInvoiceUrl)}
+    ${invoicePdfUrl ? secondaryButton(c.html('pdfCta'), invoicePdfUrl) : ''}
     ${divider()}
-    ${paragraph('Payment is handled securely by Stripe.')}
+    ${paragraph(c.html('stripe'))}
   `;
 
   return baseLayout(content, {
-    preheader: `${safeInstructor} sent you an invoice for ${safeAmount}`,
-    footerNote:
-      "You're receiving this because an invoice was sent to this address on MotionHive.",
+    preheader: c.html('preheader', {
+      instructor,
+      amount: money(amountCents, currency),
+    }),
+    footerNote: c.html('footerNote'),
     category: 'action',
+    locale,
   });
 }
 
-export function invoiceSendTemplateText(params: {
-  instructorName: string;
-  amountLabel: string;
-  dueDateLabel: string | null;
-  invoiceNumber: string | null;
-  hostedInvoiceUrl: string;
-  invoicePdfUrl: string | null;
-  recipientName?: string | null;
-}): string {
+export function invoiceSendTemplateText(params: InvoiceSendParams): string {
   const {
-    instructorName,
-    amountLabel,
-    dueDateLabel,
-    invoiceNumber,
+    amountCents,
+    currency,
+    dueDate,
     hostedInvoiceUrl,
     invoicePdfUrl,
-    recipientName,
+    locale,
   } = params;
-  const greeting = recipientName ? `Hi ${recipientName},` : 'Hi there,';
+  const c = emailCopy(locale, 'email.invoice.send');
+  const instructor = params.instructorName || null;
+  const ref = params.invoiceNumber || null;
+  const name = params.recipientName || null;
 
   const details = [
-    { label: 'Invoice #', value: invoiceNumber || '—' },
-    { label: 'From', value: instructorName },
-    { label: 'Amount', value: amountLabel },
-    ...(dueDateLabel ? [{ label: 'Due', value: dueDateLabel }] : []),
+    ...(ref ? [{ label: c.text('numberLabel'), value: ref }] : []),
+    {
+      label: c.text('fromLabel'),
+      value: instructor ?? c.text('fromFallback'),
+    },
+    {
+      label: c.text('amountLabel'),
+      value: formatMoney(amountCents, currency, locale),
+    },
+    ...(dueDate
+      ? [{ label: c.text('dueLabel'), value: formatDay(dueDate, locale) }]
+      : []),
   ];
 
   const ctas = [
-    { label: 'View & pay invoice', url: hostedInvoiceUrl },
-    ...(invoicePdfUrl ? [{ label: 'Download PDF', url: invoicePdfUrl }] : []),
+    { label: c.text('cta'), url: hostedInvoiceUrl },
+    ...(invoicePdfUrl ? [{ label: c.text('pdfCta'), url: invoicePdfUrl }] : []),
   ];
 
   return plainTextLayout({
-    preheader: `${instructorName} sent you an invoice for ${amountLabel}`,
-    footerNote:
-      "You're receiving this because an invoice was sent to this address on MotionHive.",
+    preheader: c.text('preheader', {
+      instructor,
+      amount: money(amountCents, currency),
+    }),
+    footerNote: c.text('footerNote'),
+    locale,
     sections: [
       {
-        heading: 'You have a new invoice',
+        heading: c.text('heading'),
         body: [
-          greeting,
-          `${instructorName} sent you an invoice on MotionHive.`,
+          c.text('greeting', { name }),
+          `${c.text('subheading', { instructor })}.`,
         ],
         details,
         ctas,
       },
-      {
-        body: ['Payment is handled securely by Stripe.'],
-      },
+      { body: [c.text('stripe')] },
     ],
   });
 }

@@ -7,6 +7,7 @@ import { Waitlist } from './entities/waitlist.entity';
 import { CreateWaitlistDto } from './dto/create-waitlist.dto';
 import { EmailService } from '../../common/services/email.service';
 import { EmailVerifierService } from '../../common/services/email-verifier.service';
+import { toLocale } from '../../common/i18n';
 
 @Injectable()
 export class WaitlistService {
@@ -49,7 +50,7 @@ export class WaitlistService {
 
     // First-time signup — fire-and-forget confirmation.
     this.emailService
-      .sendWaitlistConfirmation(dto.email, dto.name)
+      .sendWaitlistConfirmation(dto.email, dto.name, toLocale(dto.language))
       .catch((err: Error) =>
         this.logger.error(
           `Failed to send waitlist confirmation to ${dto.email}: ${err.message}`,

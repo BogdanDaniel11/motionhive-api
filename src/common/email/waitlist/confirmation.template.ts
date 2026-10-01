@@ -1,4 +1,4 @@
-import { escapeHtml } from '../../utils/html.utils';
+import type { Locale } from '../../i18n';
 import {
   baseLayout,
   calloutBox,
@@ -9,53 +9,58 @@ import {
   plainTextLayout,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
 
 /**
  * Public-facing acknowledgement when someone joins the pre-launch
  * waitlist from the marketing site. Keep the tone light — these are
  * cold leads, not active users.
  */
-export function waitlistConfirmationTemplate(name?: string): string {
-  const greeting = name ? `Hi ${escapeHtml(name)},` : 'Hi there,';
+export function waitlistConfirmationTemplate(
+  name: string | null | undefined,
+  locale: Locale,
+): string {
+  const c = emailCopy(locale, 'email.waitlist.confirmation');
 
   const content = `
-    ${eyebrow("YOU'RE ON THE LIST", 'confirmation')}
-    ${heading("You're on the list! &#127881;")}
-    ${subheading('Thanks for your interest in MotionHive')}
-    ${paragraph(`${greeting} we're thrilled that you want to be part of the MotionHive community.`)}
-    ${paragraph("We're working hard to build a platform that makes fitness more accessible, social, and fun. You'll be among the <strong>first to know</strong> when we launch.")}
-    ${calloutBox('info', "<strong>What happens next?</strong> We'll send you an invite as soon as early access opens. Stay tuned!")}
+    ${eyebrow(c.html('eyebrow'), 'confirmation', locale)}
+    ${heading(`${c.html('heading')} &#127881;`)}
+    ${subheading(c.html('subheading'))}
+    ${paragraph(c.html('intro', { name: name || null }))}
+    ${paragraph(c.html('building'))}
+    ${calloutBox('info', c.html('next'))}
     ${divider()}
-    ${paragraph('In the meantime, follow us for updates and sneak peeks.')}
+    ${paragraph(c.html('follow'))}
   `;
 
   return baseLayout(content, {
-    preheader: "You're on the MotionHive waitlist!",
-    footerNote:
-      "You're receiving this because you signed up for the MotionHive waitlist.",
+    preheader: c.html('preheader'),
+    footerNote: c.html('footerNote'),
     category: 'confirmation',
+    locale,
   });
 }
 
-export function waitlistConfirmationTemplateText(name?: string): string {
-  const greeting = name ? `Hi ${name},` : 'Hi there,';
+export function waitlistConfirmationTemplateText(
+  name: string | null | undefined,
+  locale: Locale,
+): string {
+  const c = emailCopy(locale, 'email.waitlist.confirmation');
 
   return plainTextLayout({
-    preheader: "You're on the MotionHive waitlist!",
-    footerNote:
-      "You're receiving this because you signed up for the MotionHive waitlist.",
+    preheader: c.text('preheader'),
+    footerNote: c.text('footerNote'),
+    locale,
     sections: [
       {
-        heading: "You're on the list",
+        heading: c.text('heading'),
         body: [
-          `${greeting} we're thrilled that you want to be part of the MotionHive community.`,
-          "We're working hard to build a platform that makes fitness more accessible, social, and fun. You'll be among the first to know when we launch.",
-          "What happens next? We'll send you an invite as soon as early access opens. Stay tuned!",
+          c.text('intro', { name: name || null }),
+          c.text('building'),
+          c.text('next'),
         ],
       },
-      {
-        body: ['In the meantime, follow us for updates and sneak peeks.'],
-      },
+      { body: [c.text('follow')] },
     ],
   });
 }

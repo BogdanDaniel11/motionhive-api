@@ -43,6 +43,7 @@ import {
   InstructorClient,
   InstructorClientStatus,
 } from './entities/instructor-client.entity';
+import { toLocale } from '../../common/i18n';
 
 // ---------------------------------------------------------------------------
 // Local shape types for getMyClients / enrichWithGroupMemberships
@@ -710,7 +711,7 @@ export class ClientService {
 
     // Cannot invite yourself
     const instructor = await User.findByPk(instructorId, {
-      attributes: ['id', 'email', 'firstName', 'lastName'],
+      attributes: ['id', 'email', 'firstName', 'lastName', 'language'],
     });
     if (instructor && instructor.email.toLowerCase() === normalizedEmail) {
       throw new BadRequestException('You cannot invite yourself as a client');
@@ -777,6 +778,9 @@ export class ClientService {
         instructorName,
         message,
         inviteToken,
+        // No account yet, so no language of their own: write in the
+        // inviting instructor's.
+        toLocale(instructor?.language),
       )
       .catch((err: Error) =>
         this.logger.error(
@@ -822,7 +826,7 @@ export class ClientService {
 
     // Verify target user exists
     const targetUser = await User.findByPk(toUserId, {
-      attributes: ['id', 'email', 'firstName'],
+      attributes: ['id', 'email', 'firstName', 'language'],
     });
     if (!targetUser) {
       throw new NotFoundException('User not found');
@@ -907,6 +911,7 @@ export class ClientService {
         instructorName,
         result.id,
         message,
+        toLocale(targetUser.language),
       )
       .catch((err: Error) =>
         this.logger.error(
@@ -1008,7 +1013,7 @@ export class ClientService {
       attributes: ['email', 'firstName', 'lastName'],
     });
     const instructorEmail = await User.findByPk(instructorId, {
-      attributes: ['email'],
+      attributes: ['email', 'language'],
     });
     if (sender && instructorEmail) {
       const clientName =
@@ -1021,6 +1026,7 @@ export class ClientService {
           clientName,
           request.id,
           message,
+          toLocale(instructorEmail.language),
         )
         .catch((err: Error) =>
           this.logger.error(
@@ -1133,7 +1139,7 @@ export class ClientService {
     // Notify the request sender (fire-and-forget)
     const [sender, responder] = await Promise.all([
       User.findByPk(request.fromUserId, {
-        attributes: ['email', 'firstName'],
+        attributes: ['email', 'firstName', 'language'],
       }),
       User.findByPk(userId, {
         attributes: ['firstName', 'lastName', 'email'],
@@ -1148,6 +1154,7 @@ export class ClientService {
           sender.email,
           sender.firstName,
           responderName,
+          toLocale(sender.language),
         )
         .catch((err: Error) =>
           this.logger.error(
@@ -1240,7 +1247,7 @@ export class ClientService {
     // Notify the request sender (fire-and-forget)
     const [sender, responder] = await Promise.all([
       User.findByPk(request.fromUserId, {
-        attributes: ['email', 'firstName'],
+        attributes: ['email', 'firstName', 'language'],
       }),
       User.findByPk(userId, {
         attributes: ['firstName', 'lastName', 'email'],
@@ -1255,6 +1262,7 @@ export class ClientService {
           sender.email,
           sender.firstName,
           responderName,
+          toLocale(sender.language),
         )
         .catch((err: Error) =>
           this.logger.error(
@@ -1369,7 +1377,7 @@ export class ClientService {
         {
           model: User,
           as: 'toUser',
-          attributes: ['id', 'email', 'firstName'],
+          attributes: ['id', 'email', 'firstName', 'language'],
         },
       ],
     });
@@ -1402,7 +1410,7 @@ export class ClientService {
     });
 
     const instructor = await User.findByPk(instructorId, {
-      attributes: ['firstName', 'lastName'],
+      attributes: ['firstName', 'lastName', 'language'],
     });
     const instructorName = instructor
       ? `${instructor.firstName} ${instructor.lastName}`
@@ -1418,12 +1426,15 @@ export class ClientService {
             instructorName,
             request.id,
             request.message ?? undefined,
+            toLocale(request.toUser?.language),
           )
         : this.emailService.sendClientInvitationEmail(
             recipientEmail,
             instructorName,
             request.message ?? undefined,
             newToken ?? undefined,
+            // No account yet: the inviting instructor's language.
+            toLocale(instructor?.language),
           );
 
       sendPromise.catch((err: Error) =>
@@ -1497,12 +1508,12 @@ export class ClientService {
         {
           model: User,
           as: 'instructor',
-          attributes: ['id', 'firstName', 'lastName', 'email'],
+          attributes: ['id', 'firstName', 'lastName', 'email', 'language'],
         },
         {
           model: User,
           as: 'client',
-          attributes: ['id', 'firstName', 'lastName', 'email'],
+          attributes: ['id', 'firstName', 'lastName', 'email', 'language'],
         },
       ],
     });
@@ -1572,12 +1583,12 @@ export class ClientService {
         {
           model: User,
           as: 'instructor',
-          attributes: ['id', 'firstName', 'lastName', 'email'],
+          attributes: ['id', 'firstName', 'lastName', 'email', 'language'],
         },
         {
           model: User,
           as: 'client',
-          attributes: ['id', 'firstName', 'lastName', 'email'],
+          attributes: ['id', 'firstName', 'lastName', 'email', 'language'],
         },
       ],
     });
@@ -1665,6 +1676,7 @@ export class ClientService {
           otherPartyName: instructorName,
           endedBy: endedBy === 'client' ? 'self' : 'other',
           recipientRole: 'client',
+          locale: toLocale(client.language),
         }),
       );
     }
@@ -1676,6 +1688,7 @@ export class ClientService {
           otherPartyName: clientName,
           endedBy: endedBy === 'instructor' ? 'self' : 'other',
           recipientRole: 'instructor',
+          locale: toLocale(instructor.language),
         }),
       );
     }

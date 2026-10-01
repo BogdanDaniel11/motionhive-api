@@ -26,6 +26,8 @@ import {
   groupInvitationAccepted,
   groupInvitationDeclined,
 } from '../group/notifications';
+import { toLocale } from '../../common/i18n';
+import type { Locale } from '../../common/i18n';
 
 /**
  * Invitation Service
@@ -121,11 +123,11 @@ export class InvitationService {
 
     // Get inviter name for email
     const inviter = await User.findByPk(inviterId, {
-      attributes: ['firstName', 'lastName'],
+      attributes: ['firstName', 'lastName', 'language'],
     });
     const inviterName = inviter
       ? `${inviter.firstName} ${inviter.lastName}`
-      : 'Group Owner';
+      : null;
 
     const invitation = await this.invitationModel.create({
       inviterId: inviterId,
@@ -150,6 +152,7 @@ export class InvitationService {
         inviterName,
         group.name,
         dto.message,
+        await this.localeForEmail(dto.email, inviter?.language),
       )
       .catch((err: Error) =>
         this.logger.error(
@@ -272,7 +275,7 @@ export class InvitationService {
 
     // Email + bell notification for the inviter.
     const inviterUser = await User.findByPk(invitation.inviterId, {
-      attributes: ['email', 'firstName'],
+      attributes: ['email', 'firstName', 'language'],
     });
     const acceptingUser = await User.findByPk(userId, {
       attributes: ['firstName', 'lastName'],
@@ -284,7 +287,8 @@ export class InvitationService {
           inviterUser.email,
           inviterUser.firstName,
           accepterName,
-          invitation.group?.name || 'your group',
+          invitation.group?.name ?? null,
+          toLocale(inviterUser.language),
         )
         .catch((err: unknown) =>
           this.logger.warn(
@@ -393,20 +397,23 @@ export class InvitationService {
     // so if we can't resolve the invitee's name we pass a generic
     // "A user" fallback rather than echoing the invitee's email.
     const inviterUser = await User.findByPk(invitation.inviterId, {
-      attributes: ['email', 'firstName', 'lastName'],
+      attributes: ['email', 'firstName', 'lastName', 'language'],
     });
     if (inviterUser?.email && invitation.group?.name) {
       const inviterDisplayName =
         [inviterUser.firstName, inviterUser.lastName]
           .filter(Boolean)
           .join(' ')
-          .trim() || 'there';
+          .trim() || null;
       this.emailService
         .sendGroupInvitationDeclinedEmail(
           inviterUser.email,
           inviterDisplayName,
-          inviteeName ?? 'A user',
+          // null, not a stand-in word: the email words a missing name
+          // itself, in the reader's language.
+          inviteeName ?? null,
           invitation.group.name,
+          toLocale(inviterUser.language),
         )
         .catch((err: Error) =>
           this.logger.error(
@@ -495,11 +502,11 @@ export class InvitationService {
 
     // Get inviter name
     const inviter = await User.findByPk(invitation.inviterId, {
-      attributes: ['firstName', 'lastName'],
+      attributes: ['firstName', 'lastName', 'language'],
     });
     const inviterName = inviter
       ? `${inviter.firstName} ${inviter.lastName}`
-      : 'Group Owner';
+      : null;
 
     // Send email
     this.emailService
@@ -508,7 +515,8 @@ export class InvitationService {
         plainToken,
         inviterName,
         invitation.group.name,
-        invitation.message,
+        invitation.message ?? undefined,
+        await this.localeForEmail(invitation.email, inviter?.language),
       )
       .catch((err: Error) =>
         this.logger.error(
@@ -604,5 +612,21 @@ export class InvitationService {
       });
 
     return buildPaginatedResponse(data, totalItems, page, limit);
+  }
+
+  /**
+   * The language to write to an email address in. An invitation can go
+   * to someone with an account (use theirs) or without one (use the
+   * inviter's, the best guess for someone they know).
+   */
+  private async localeForEmail(
+    email: string,
+    inviterLanguage: string | undefined,
+  ): Promise<Locale> {
+    const recipient = await User.findOne({
+      where: { email: email.trim().toLowerCase() },
+      attributes: ['language'],
+    });
+    return toLocale(recipient?.language ?? inviterLanguage);
   }
 }

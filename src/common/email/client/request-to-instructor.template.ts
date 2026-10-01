@@ -1,3 +1,4 @@
+import type { Locale } from '../../i18n';
 import { escapeHtml } from '../../utils/html.utils';
 import {
   baseLayout,
@@ -11,6 +12,15 @@ import {
   plainTextLayout,
   primaryButton,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
+
+interface ClientRequestToInstructorParams {
+  instructorFirstName: string | null;
+  clientName: string;
+  reviewLink: string;
+  message?: string;
+  locale: Locale;
+}
 
 /**
  * Notifies an instructor that a user has requested to become their
@@ -23,58 +33,56 @@ import {
  * highlighted row). When product approves a separate `declineLink`
  * pre-action, swap the second button to that URL.
  */
-export function clientRequestToInstructorTemplate(params: {
-  instructorFirstName: string | null;
-  clientName: string;
-  reviewLink: string;
-  message?: string;
-}): string {
-  const { instructorFirstName, clientName, reviewLink, message } = params;
-  const safeFirst = escapeHtml(instructorFirstName);
-  const safeClient = escapeHtml(clientName);
-  const safeMessage = escapeHtml(message);
-  const greeting = instructorFirstName ? `Hi ${safeFirst},` : 'Hi,';
+export function clientRequestToInstructorTemplate(
+  params: ClientRequestToInstructorParams,
+): string {
+  const { instructorFirstName, clientName, reviewLink, message, locale } =
+    params;
+  const c = emailCopy(locale, 'email.client.requestToInstructor');
+  const name = { name: clientName };
 
   const content = `
-    ${eyebrow('NEW CLIENT REQUEST', 'request')}
-    ${paragraph(greeting)}
-    ${heading('New client request')}
-    ${personCard({ name: clientName, role: 'Prospective client' })}
-    ${paragraph(`<strong>${safeClient}</strong> wants to work with you as a client.`)}
-    ${message ? calloutBox('info', `<em>"${safeMessage}"</em>`) : ''}
+    ${eyebrow(c.html('eyebrow'), 'request')}
+    ${paragraph(c.html('greeting', { recipient: instructorFirstName || null }))}
+    ${heading(c.html('heading'))}
+    ${personCard({ name: escapeHtml(clientName), role: c.html('personRole') })}
+    ${paragraph(c.html('body', name))}
+    ${message ? calloutBox('info', `<em>${c.html('messageQuote', { message })}</em>`) : ''}
     ${buttonRow([
-      primaryButton('Accept request', reviewLink),
-      dangerButton('Decline', reviewLink),
+      primaryButton(c.html('ctaAccept'), reviewLink),
+      dangerButton(c.html('ctaDecline'), reviewLink),
     ])}
   `;
 
   return baseLayout(content, {
-    preheader: `${clientName} wants to work with you on MotionHive`,
+    preheader: c.html('preheader', name),
     category: 'request',
+    locale,
   });
 }
 
-export function clientRequestToInstructorTemplateText(params: {
-  instructorFirstName: string | null;
-  clientName: string;
-  reviewLink: string;
-  message?: string;
-}): string {
-  const { instructorFirstName, clientName, reviewLink, message } = params;
-  const greeting = instructorFirstName ? `Hi ${instructorFirstName},` : 'Hi,';
+export function clientRequestToInstructorTemplateText(
+  params: ClientRequestToInstructorParams,
+): string {
+  const { instructorFirstName, clientName, reviewLink, message, locale } =
+    params;
+  const c = emailCopy(locale, 'email.client.requestToInstructor');
+  const name = { name: clientName };
+
   return plainTextLayout({
-    preheader: `${clientName} wants to work with you on MotionHive`,
+    preheader: c.text('preheader', name),
+    locale,
     sections: [
       {
-        heading: 'New client request',
+        heading: c.text('heading'),
         body: [
-          greeting,
-          `${clientName} wants to work with you as a client.`,
-          ...(message ? [`Message: "${message}"`] : []),
+          c.text('greeting', { recipient: instructorFirstName || null }),
+          c.text('body', name),
+          ...(message ? [c.text('messageLine', { message })] : []),
         ],
         ctas: [
-          { label: 'Accept request', url: reviewLink },
-          { label: 'Decline', url: reviewLink },
+          { label: c.text('ctaAccept'), url: reviewLink },
+          { label: c.text('ctaDecline'), url: reviewLink },
         ],
       },
     ],

@@ -1,3 +1,4 @@
+import type { Locale } from '../../i18n';
 import { escapeHtml } from '../../utils/html.utils';
 import {
   baseLayout,
@@ -11,6 +12,17 @@ import {
   secondaryButton,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
+
+export interface GroupOwnershipTransferredParams {
+  direction: 'received' | 'transferred';
+  recipientFirstName: string | null;
+  /** `null` when the other owner's name could not be resolved. */
+  otherPartyName: string | null;
+  groupName: string;
+  groupLink: string;
+  locale: Locale;
+}
 
 /**
  * Sent to both parties when group ownership is transferred. The
@@ -22,123 +34,78 @@ import {
  * 'confirmation' (something good is yours now); the old owner is
  * an 'update' (informational, neutral).
  */
-export function groupOwnershipTransferredTemplate(params: {
-  direction: 'received' | 'transferred';
-  recipientFirstName: string | null;
-  otherPartyName: string;
-  groupName: string;
-  groupLink: string;
-}): string {
+export function groupOwnershipTransferredTemplate(
+  params: GroupOwnershipTransferredParams,
+): string {
   const {
     direction,
     recipientFirstName,
     otherPartyName,
     groupName,
     groupLink,
+    locale,
   } = params;
-  const safeFirst = escapeHtml(recipientFirstName);
-  const safeOther = escapeHtml(otherPartyName);
-  const safeGroup = escapeHtml(groupName);
-  const greeting = recipientFirstName ? `Hi ${safeFirst},` : 'Hi there,';
-
-  const eyebrowLabel =
-    direction === 'received'
-      ? 'YOU ARE THE NEW OWNER'
-      : 'OWNERSHIP TRANSFERRED';
+  const c = emailCopy(locale, 'email.group.ownershipTransferred');
+  const name = otherPartyName || null;
+  const names = { name, group: groupName };
   const category = direction === 'received' ? 'confirmation' : 'update';
-  const headline =
-    direction === 'received'
-      ? `You're now the owner of ${safeGroup}`
-      : `You transferred ${safeGroup}`;
-  const sub =
-    direction === 'received'
-      ? `${safeOther} handed the group over to you`
-      : `${safeOther} is now the owner`;
-  const body =
-    direction === 'received'
-      ? `<strong>${safeOther}</strong> transferred ownership of <strong>${safeGroup}</strong> to you. You now have full control over members, settings, sessions and posts.`
-      : `You transferred ownership of <strong>${safeGroup}</strong> to <strong>${safeOther}</strong>. You remain a member of the group, but ${safeOther} now controls members, settings, sessions and posts.`;
-  const personRole = direction === 'received' ? 'Previous owner' : 'New owner';
 
+  const otherPartyCard = name
+    ? personCard({
+        name: escapeHtml(name),
+        role: c.html(`${direction}.cardRole`),
+      })
+    : '';
   const cta =
     direction === 'received'
-      ? primaryButton('Manage your group', groupLink)
-      : secondaryButton('Open group', groupLink);
+      ? primaryButton(c.html('received.cta'), groupLink)
+      : secondaryButton(c.html('transferred.cta'), groupLink);
 
   const content = `
-    ${eyebrow(eyebrowLabel, category)}
-    ${paragraph(greeting)}
-    ${heading(headline)}
-    ${subheading(sub)}
-    ${personCard({ name: otherPartyName, role: personRole })}
-    ${paragraph(body)}
+    ${eyebrow(c.html(`${direction}.eyebrow`), category, locale)}
+    ${paragraph(c.html('greeting', { firstName: recipientFirstName || null }))}
+    ${heading(c.html(`${direction}.heading`, { group: groupName }))}
+    ${subheading(c.html(`${direction}.subheading`, { name }))}
+    ${otherPartyCard}
+    ${paragraph(c.html(`${direction}.body`, names))}
     ${cta}
     ${divider()}
-    ${paragraph(
-      direction === 'received'
-        ? 'You can always transfer ownership again later from the group settings.'
-        : 'Thanks for keeping the group active. You can always rejoin a leadership role by being invited back as an owner.',
-    )}
+    ${paragraph(c.html(`${direction}.closing`))}
   `;
 
   return baseLayout(content, {
-    preheader:
-      direction === 'received'
-        ? `${otherPartyName} transferred ${groupName} to you`
-        : `You transferred ownership of ${groupName} to ${otherPartyName}`,
+    preheader: c.html(`${direction}.preheader`, names),
     category,
+    locale,
   });
 }
 
-export function groupOwnershipTransferredTemplateText(params: {
-  direction: 'received' | 'transferred';
-  recipientFirstName: string | null;
-  otherPartyName: string;
-  groupName: string;
-  groupLink: string;
-}): string {
+export function groupOwnershipTransferredTemplateText(
+  params: GroupOwnershipTransferredParams,
+): string {
   const {
     direction,
     recipientFirstName,
     otherPartyName,
     groupName,
     groupLink,
+    locale,
   } = params;
-  const greeting = recipientFirstName
-    ? `Hi ${recipientFirstName},`
-    : 'Hi there,';
-  const headline =
-    direction === 'received'
-      ? `You're now the owner of ${groupName}`
-      : `You transferred ${groupName}`;
-  const body =
-    direction === 'received'
-      ? `${otherPartyName} transferred ownership of ${groupName} to you. You now have full control over members, settings, sessions and posts.`
-      : `You transferred ownership of ${groupName} to ${otherPartyName}. You remain a member of the group, but ${otherPartyName} now controls members, settings, sessions and posts.`;
+  const c = emailCopy(locale, 'email.group.ownershipTransferred');
+  const names = { name: otherPartyName || null, group: groupName };
   return plainTextLayout({
-    preheader:
-      direction === 'received'
-        ? `${otherPartyName} transferred ${groupName} to you`
-        : `You transferred ownership of ${groupName} to ${otherPartyName}`,
+    preheader: c.text(`${direction}.preheader`, names),
+    locale,
     sections: [
       {
-        heading: headline,
-        body: [greeting, body],
-        ctas: [
-          {
-            label:
-              direction === 'received' ? 'Manage your group' : 'Open group',
-            url: groupLink,
-          },
-        ],
-      },
-      {
+        heading: c.text(`${direction}.heading`, { group: groupName }),
         body: [
-          direction === 'received'
-            ? 'You can always transfer ownership again later from the group settings.'
-            : 'Thanks for keeping the group active. You can always rejoin a leadership role by being invited back as an owner.',
+          c.text('greeting', { firstName: recipientFirstName || null }),
+          c.text(`${direction}.body`, names),
         ],
+        ctas: [{ label: c.text(`${direction}.cta`), url: groupLink }],
       },
+      { body: [c.text(`${direction}.closing`)] },
     ],
   });
 }
