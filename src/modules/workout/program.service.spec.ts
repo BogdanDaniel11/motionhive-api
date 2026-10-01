@@ -52,6 +52,7 @@ describe('ProgramService (smoke — not exhaustive)', () => {
     findOne: jest.fn(),
     findAll: jest.fn(),
     create: jest.fn(),
+    update: jest.fn(),
     destroy: jest.fn(),
     count: jest.fn(),
     max: jest.fn(),
@@ -945,10 +946,19 @@ describe('ProgramService (smoke — not exhaustive)', () => {
         .mockResolvedValueOnce({ id: 'w-copy-2' });
       prescribedExerciseModel.create.mockResolvedValueOnce({ id: 'e-copy-1' });
 
+      // The renumbering pass: a clone arrives carrying its source's number.
+      const stale = { sequenceNumber: 7, update: jest.fn() };
+      workoutModel.findAll.mockResolvedValueOnce([stale]);
+
       const copied = await service.copyWeek(
         'p-1',
         { fromWeekIndex: 0, toWeekIndex: 2 },
         'me',
+      );
+
+      expect(stale.update).toHaveBeenCalledWith(
+        { sequenceNumber: 0 },
+        { transaction: fakeTx },
       );
 
       expect(copied.map((w) => w.id)).toEqual(['w-copy-1', 'w-copy-2']);
@@ -1041,6 +1051,7 @@ describe('ProgramService (smoke — not exhaustive)', () => {
     it('replaces only that day slot in each target week, in one transaction', async () => {
       owned();
       workoutModel.findOne.mockResolvedValueOnce(sourceDay);
+      workoutModel.findAll.mockResolvedValueOnce([]);
       workoutModel.create
         .mockResolvedValueOnce({ id: 'w-d2' })
         .mockResolvedValueOnce({ id: 'w-d3' });
@@ -1085,6 +1096,7 @@ describe('ProgramService (smoke — not exhaustive)', () => {
       // source row must survive the destroy that clears the target slot.
       owned();
       workoutModel.findOne.mockResolvedValueOnce(sourceDay);
+      workoutModel.findAll.mockResolvedValueOnce([]);
       workoutModel.create.mockResolvedValueOnce({ id: 'w-thu' });
       prescribedExerciseModel.create.mockResolvedValueOnce({ id: 'e-1' });
 
@@ -1137,6 +1149,7 @@ describe('ProgramService (smoke — not exhaustive)', () => {
     it('ignores a week listed twice', async () => {
       owned();
       workoutModel.findOne.mockResolvedValueOnce(sourceDay);
+      workoutModel.findAll.mockResolvedValueOnce([]);
       workoutModel.create.mockResolvedValueOnce({ id: 'w-d2' });
       prescribedExerciseModel.create.mockResolvedValueOnce({ id: 'e-1' });
 
@@ -1147,6 +1160,131 @@ describe('ProgramService (smoke — not exhaustive)', () => {
       );
 
       expect(workoutModel.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ─── Repeat the built weeks into the empty ones after them ───────
+
+  describe('repeatWeeks', () => {
+    const program = (durationDays: number | null) => ({
+      id: 'p-1',
+      ownerId: 'me',
+      isSingleWorkout: false,
+      durationDays,
+    });
+    const day = (weekIndex: number, dayIndex: number, name: string) => ({
+      name,
+      weekIndex,
+      dayIndex,
+      sequenceNumber: 0,
+      exercises: [],
+    });
+
+    it('cycles the built block through the empty weeks after it', async () => {
+      programModel.findByPk
+        .mockResolvedValueOnce(program(35)) // five weeks
+        .mockResolvedValueOnce({ id: 'p-1', ownerId: 'me' });
+      workoutModel.findAll
+        .mockResolvedValueOnce([day(0, 0, 'A'), day(1, 2, 'B')]) // block = weeks 1–2
+        .mockResolvedValueOnce([]); // renumbering pass
+      workoutModel.create
+        .mockResolvedValueOnce({ id: 'w-3' })
+        .mockResolvedValueOnce({ id: 'w-4' })
+        .mockResolvedValueOnce({ id: 'w-5' });
+
+      await service.repeatWeeks('p-1', 'me');
+
+      const created = workoutModel.create.mock.calls.map(
+        ([row]: [{ name: string; weekIndex: number; dayIndex: number }]) =>
+          `${row.name}@${row.weekIndex}:${row.dayIndex}`,
+      );
+      expect(created).toEqual(['A@2:0', 'B@3:2', 'A@4:0']);
+    });
+
+    it('writes nothing when the built weeks already fill the length', async () => {
+      programModel.findByPk
+        .mockResolvedValueOnce(program(14))
+        .mockResolvedValueOnce({ id: 'p-1', ownerId: 'me' });
+      workoutModel.findAll.mockResolvedValueOnce([
+        day(0, 0, 'A'),
+        day(1, 0, 'B'),
+      ]);
+
+      await service.repeatWeeks('p-1', 'me');
+
+      expect(workoutModel.create).not.toHaveBeenCalled();
+    });
+
+    it('needs a length to know how far to repeat', async () => {
+      programModel.findByPk.mockResolvedValueOnce(program(null));
+      await expect(service.repeatWeeks('p-1', 'me')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  // ─── Delete one week and close the gap ───────────────────────────
+
+  describe('deleteWeek', () => {
+    const program = (durationDays: number, update = jest.fn()) => ({
+      id: 'p-1',
+      ownerId: 'me',
+      isSingleWorkout: false,
+      durationDays,
+      update,
+    });
+
+    it('removes the week, moves later weeks up and shortens the program', async () => {
+      const update = jest.fn();
+      programModel.findByPk
+        .mockResolvedValueOnce(program(28, update))
+        .mockResolvedValueOnce({ id: 'p-1', ownerId: 'me' });
+      workoutModel.findAll
+        .mockResolvedValueOnce([
+          { id: 'a', weekIndex: 0 },
+          { id: 'b', weekIndex: 1 },
+          { id: 'c', weekIndex: 3 },
+          { id: 'd', weekIndex: 3 },
+        ])
+        .mockResolvedValueOnce([]); // renumbering pass
+      assignmentModel.count.mockResolvedValueOnce(0);
+
+      await service.deleteWeek('p-1', 1, 'me');
+
+      expect(workoutModel.destroy).toHaveBeenCalledWith({
+        where: { programId: 'p-1', weekIndex: 1 },
+        transaction: fakeTx,
+      });
+      // Only week 4 holds work after the deleted one; it becomes week 3.
+      expect(workoutModel.update).toHaveBeenCalledTimes(1);
+      expect(workoutModel.update).toHaveBeenCalledWith(
+        { weekIndex: 2 },
+        { where: { programId: 'p-1', weekIndex: 3 }, transaction: fakeTx },
+      );
+      expect(update).toHaveBeenCalledWith(
+        { durationDays: 21 },
+        { transaction: fakeTx },
+      );
+    });
+
+    it('refuses while clients are still training that week', async () => {
+      programModel.findByPk.mockResolvedValueOnce(program(28));
+      workoutModel.findAll.mockResolvedValueOnce([{ id: 'b', weekIndex: 1 }]);
+      assignmentModel.count.mockResolvedValueOnce(2);
+
+      await expect(service.deleteWeek('p-1', 1, 'me')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(workoutModel.destroy).not.toHaveBeenCalled();
+    });
+
+    it('refuses to delete the only week', async () => {
+      programModel.findByPk.mockResolvedValueOnce(program(7));
+      workoutModel.findAll.mockResolvedValueOnce([{ id: 'a', weekIndex: 0 }]);
+
+      await expect(service.deleteWeek('p-1', 0, 'me')).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });

@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   Param,
+  ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -203,6 +204,27 @@ export class ProgramController {
     @Body() dto: CopyProgramDayDto,
   ) {
     return this.programService.copyDay(id, dto, req.user.id);
+  }
+
+  @Post(':id/workouts/repeat-weeks')
+  @Throttle({ default: { limit: 30, ttl: 3_600_000 } })
+  @ApiEndpoint({ ...ProgramDocs.repeatWeeks })
+  async repeatWeeks(
+    @Request() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.programService.repeatWeeks(id, req.user.id);
+  }
+
+  @Delete(':id/weeks/:weekIndex')
+  @Throttle({ default: { limit: 60, ttl: 3_600_000 } })
+  @ApiEndpoint({ ...ProgramDocs.deleteWeek })
+  async deleteWeek(
+    @Request() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('weekIndex', ParseIntPipe) weekIndex: number,
+  ) {
+    return this.programService.deleteWeek(id, weekIndex, req.user.id);
   }
 
   @Patch(':id/workouts/:workoutId')

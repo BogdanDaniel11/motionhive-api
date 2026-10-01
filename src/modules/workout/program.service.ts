@@ -527,6 +527,7 @@ export class ProgramService {
           ),
         );
       }
+      await this._resequence(programId, tx);
       return copied;
     });
   }
@@ -611,7 +612,191 @@ export class ProgramService {
           ),
         );
       }
+      await this._resequence(programId, tx);
       return copied;
+    });
+  }
+
+  /**
+   * Repeat the weeks already built into the empty ones after them.
+   *
+   * The block is every week up to the last one holding work — rest weeks
+   * inside it included — and it cycles: a 3-week block on a 10-week
+   * program fills weeks 4–10 as 1, 2, 3, 1, 2, 3, 1. Only weeks past the
+   * block are written, and those are empty by definition, so nothing a
+   * coach built is ever replaced and running it twice changes nothing.
+   */
+  async repeatWeeks(programId: string, ownerId: string): Promise<Program> {
+    const program = await this._loadProgram(programId, ownerId);
+    if (program.isSingleWorkout) {
+      throw new BadRequestException('A routine has no weeks to repeat.');
+    }
+    if (!program.durationDays) {
+      throw new BadRequestException(
+        'Give the program a length first, so there are weeks to fill.',
+      );
+    }
+    const totalWeeks = Math.ceil(program.durationDays / DAYS_PER_WEEK);
+
+    const built = await this.workoutModel.findAll({
+      where: { programId },
+      include: [
+        {
+          model: PrescribedExercise,
+          as: 'exercises',
+          required: false,
+          include: [{ model: PrescribedSet, as: 'sets', required: false }],
+        },
+      ],
+    });
+    if (!built.length) {
+      throw new BadRequestException('There is nothing to repeat yet.');
+    }
+
+    const blockLength = Math.max(...built.map((w) => w.weekIndex)) + 1;
+    if (blockLength < totalWeeks) {
+      const byWeek = new Map<number, ProgramWorkout[]>();
+      for (const w of built) {
+        byWeek.set(w.weekIndex, [...(byWeek.get(w.weekIndex) ?? []), w]);
+      }
+
+      await this.sequelize.transaction(async (tx) => {
+        for (let week = blockLength; week < totalWeeks; week++) {
+          for (const source of byWeek.get(week % blockLength) ?? []) {
+            await this._cloneWorkoutInto(
+              source,
+              programId,
+              week,
+              source.dayIndex,
+              tx,
+            );
+          }
+        }
+        await this._resequence(programId, tx);
+      });
+    }
+
+    return this.findById(programId, ownerId);
+  }
+
+  /**
+   * Remove one week and close the gap.
+   *
+   * Its days are deleted, every later week moves up one, and a declared
+   * length loses a week with it — a program that kept its length would
+   * simply grow an empty week at the end, which is not what "delete" means.
+   */
+  async deleteWeek(
+    programId: string,
+    weekIndex: number,
+    ownerId: string,
+  ): Promise<Program> {
+    const program = await this._loadProgram(programId, ownerId);
+    if (program.isSingleWorkout) {
+      throw new BadRequestException('A routine has no weeks to delete.');
+    }
+
+    const workouts = await this.workoutModel.findAll({
+      where: { programId },
+      attributes: ['id', 'weekIndex'],
+    });
+    const declared = program.durationDays
+      ? Math.ceil(program.durationDays / DAYS_PER_WEEK)
+      : 0;
+    const used = workouts.reduce((max, w) => Math.max(max, w.weekIndex + 1), 0);
+    const totalWeeks = Math.max(declared, used);
+
+    if (weekIndex < 0 || weekIndex >= totalWeeks) {
+      throw new NotFoundException('Week not found.');
+    }
+    if (totalWeeks <= 1) {
+      throw new BadRequestException('A program needs at least one week.');
+    }
+
+    const doomed = workouts.filter((w) => w.weekIndex === weekIndex).length;
+    if (doomed > 0) {
+      const live = await this._countLiveAssignments(programId);
+      if (live > 0) {
+        throw new ConflictException(
+          `${live} ${live === 1 ? 'client is' : 'clients are'} on this program, ` +
+            `so week ${weekIndex + 1} cannot be deleted — that would drop ` +
+            `${doomed} ${doomed === 1 ? 'day' : 'days'} they are still training. ` +
+            'Finish or cancel their assignments first.',
+        );
+      }
+    }
+
+    const laterWeeks = [
+      ...new Set(
+        workouts.filter((w) => w.weekIndex > weekIndex).map((w) => w.weekIndex),
+      ),
+    ].sort((a, b) => a - b);
+
+    await this.sequelize.transaction(async (tx) => {
+      // Exercises and sets cascade from program_workout.
+      await this.workoutModel.destroy({
+        where: { programId, weekIndex },
+        transaction: tx,
+      });
+      // Ascending, one week at a time: each lands in the slot the one
+      // before it just left, so the unique (week, day) index never sees
+      // two rows in the same place.
+      for (const week of laterWeeks) {
+        await this.workoutModel.update(
+          { weekIndex: week - 1 },
+          { where: { programId, weekIndex: week }, transaction: tx },
+        );
+      }
+      if (program.durationDays) {
+        await program.update(
+          {
+            durationDays: Math.max(
+              DAYS_PER_WEEK,
+              program.durationDays - DAYS_PER_WEEK,
+            ),
+          },
+          { transaction: tx },
+        );
+      }
+      await this._resequence(programId, tx);
+    });
+
+    return this.findById(programId, ownerId);
+  }
+
+  /**
+   * Keep `sequenceNumber` in calendar order. Assignments deal workouts out
+   * by it, and a cloned workout arrives carrying its source's number.
+   */
+  private async _resequence(programId: string, tx: Transaction): Promise<void> {
+    const rows = await this.workoutModel.findAll({
+      where: { programId },
+      attributes: ['id', 'weekIndex', 'dayIndex', 'sequenceNumber'],
+      order: [
+        ['weekIndex', 'ASC'],
+        ['dayIndex', 'ASC'],
+      ],
+      transaction: tx,
+    });
+    for (const [index, row] of rows.entries()) {
+      if (row.sequenceNumber !== index) {
+        await row.update({ sequenceNumber: index }, { transaction: tx });
+      }
+    }
+  }
+
+  private _countLiveAssignments(programId: string): Promise<number> {
+    return this.assignmentModel.count({
+      where: {
+        masterProgramId: programId,
+        status: {
+          [Op.in]: [
+            ProgramAssignmentStatus.Pending,
+            ProgramAssignmentStatus.Active,
+            ProgramAssignmentStatus.Paused,
+          ],
+        },
+      },
     });
   }
 
@@ -811,18 +996,7 @@ export class ProgramService {
     });
     if (doomed === 0) return;
 
-    const live = await this.assignmentModel.count({
-      where: {
-        masterProgramId: program.id,
-        status: {
-          [Op.in]: [
-            ProgramAssignmentStatus.Pending,
-            ProgramAssignmentStatus.Active,
-            ProgramAssignmentStatus.Paused,
-          ],
-        },
-      },
-    });
+    const live = await this._countLiveAssignments(program.id);
     if (live > 0) {
       throw new ConflictException(
         `${live} ${live === 1 ? 'client is' : 'clients are'} on this program, ` +
