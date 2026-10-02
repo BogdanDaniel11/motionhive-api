@@ -1,0 +1,47 @@
+{
+  "bands": {
+    "name": "Benzi elastice"
+  },
+  "barbell": {
+    "name": "Bară"
+  },
+  "bench": {
+    "name": "Bancă"
+  },
+  "bodyweight": {
+    "name": "Greutatea corpului"
+  },
+  "cable": {
+    "name": "Scripete"
+  },
+  "dumbbell": {
+    "name": "Gantere"
+  },
+  "exercise_ball": {
+    "name": "Minge de fitness"
+  },
+  "ez_bar": {
+    "name": "Bară EZ"
+  },
+  "foam_roller": {
+    "name": "Rolă de masaj"
+  },
+  "kettlebell": {
+    "name": "Kettlebell"
+  },
+  "machine": {
+    "name": "Aparat"
+  },
+  "medicine_ball": {
+    "name": "Minge medicinală"
+  },
+  "other": {
+    "name": "Altele"
+  },
+  "pull_up_bar": {
+    "name": "Bară de tracțiuni"
+  },
+  "smith_machine": {
+    "name": "Aparat Smith"
+  }
+}
