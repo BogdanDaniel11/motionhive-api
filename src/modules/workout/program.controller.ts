@@ -37,7 +37,7 @@ import { UpdatePrescribedSetDto } from './dto/update-prescribed-set.dto';
 import { UpdateProgramDto } from './dto/update-program.dto';
 import { UpdateProgramWorkoutDto } from './dto/update-program-workout.dto';
 import { ProgramService } from './program.service';
-import { toLocale } from '../../common/i18n';
+import { requestLocale } from '../../common/i18n';
 
 /**
  * Program authoring — INSTRUCTOR-only nested CRUD across the
@@ -111,7 +111,7 @@ export class ProgramController {
     return this.programService.duplicateForUser(
       id,
       req.user.id,
-      toLocale(req.user.language),
+      requestLocale(req),
     );
   }
 

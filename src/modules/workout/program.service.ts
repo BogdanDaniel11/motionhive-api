@@ -12,7 +12,10 @@ import { literal, Op, type Order, type Transaction } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 
 import { assertOwned } from '../../common/utils/ownership.utils';
-import { escapeLikeWildcards } from '../../common/utils/search.utils';
+import {
+  escapeLikeWildcards,
+  normalizeSearchTerm,
+} from '../../common/utils/search.utils';
 import {
   buildPaginatedResponse,
   getOffset,
@@ -53,7 +56,12 @@ import { UpdatePrescribedExerciseDto } from './dto/update-prescribed-exercise.dt
 import { UpdatePrescribedSetDto } from './dto/update-prescribed-set.dto';
 import { UpdateProgramDto } from './dto/update-program.dto';
 import { UpdateProgramWorkoutDto } from './dto/update-program-workout.dto';
-import { DEFAULT_LOCALE, apiError, translate } from '../../common/i18n';
+import {
+  DEFAULT_LOCALE,
+  apiError,
+  translate,
+  translatedText,
+} from '../../common/i18n';
 import type { ErrorKey, Locale } from '../../common/i18n';
 
 /**
@@ -132,11 +140,16 @@ export class ProgramService {
         : {}),
       ...(filter.folder ? { folder: filter.folder } : {}),
       ...(filter.level ? { level: filter.level } : {}),
+      // Starter routines are searchable by their name in any language.
       ...(filter.search
         ? {
-            name: {
-              [Op.iLike]: `%${escapeLikeWildcards(filter.search.trim())}%`,
-            },
+            [Op.and]: [
+              literal(
+                `fold_for_search(name || ' ' || translated_names(translations)) LIKE ${this.sequelize.escape(
+                  `%${escapeLikeWildcards(normalizeSearchTerm(filter.search).toLowerCase())}%`,
+                )}`,
+              ),
+            ],
           }
         : {}),
     };
@@ -243,6 +256,7 @@ export class ProgramService {
                     'kind',
                     'level',
                     'thumbnailUrl',
+                    'translations',
                   ],
                 },
                 {
@@ -326,15 +340,17 @@ export class ProgramService {
       const copy = await this.programModel.create(
         {
           ownerId: userId,
+          // A copy is the person's own text, so it is written once in their
+          // language and carries no translations.
           name: translate(locale, 'content.programCopyName', {
-            name: source.name,
+            name: translatedText(source, 'name', locale),
           }),
-          description: source.description,
+          description: translatedText(source, 'description', locale),
           kind: source.kind,
           status: ProgramStatus.Draft,
           source: ProgramSource.User,
           isSingleWorkout: source.isSingleWorkout,
-          folder: source.folder,
+          folder: translatedText(source, 'folder', locale),
           goalTags: source.goalTags,
           durationDays: source.durationDays,
         },
@@ -345,8 +361,8 @@ export class ProgramService {
         const newWorkout = await this.workoutModel.create(
           {
             programId: copy.id,
-            name: w.name,
-            notes: w.notes,
+            name: translatedText(w, 'name', locale),
+            notes: translatedText(w, 'notes', locale),
             weekIndex: w.weekIndex,
             dayIndex: w.dayIndex,
             sequenceNumber: w.sequenceNumber,
@@ -364,7 +380,7 @@ export class ProgramService {
               blockId: ex.blockId,
               supersetGroupId: ex.supersetGroupId,
               orderIndex: ex.orderIndex,
-              notes: ex.notes,
+              notes: translatedText(ex, 'notes', locale),
               alternateExerciseId: ex.alternateExerciseId,
             },
             { transaction: tx },

@@ -9,6 +9,7 @@ import {
   CreatedAt,
   UpdatedAt,
 } from 'sequelize-typescript';
+import type { ContentTranslations } from '../../../common/i18n';
 import { ExerciseBlock } from './exercise-block.entity';
 import { PrescribedExercise } from './prescribed-exercise.entity';
 import { Program } from './program.entity';
@@ -58,6 +59,14 @@ export class ProgramWorkout extends Model {
 
   @Column({ type: DataType.SMALLINT, allowNull: true })
   declare estimatedDurationMinutes: number | null;
+
+  /**
+   * Other languages of name, notes, on MotionHive's own rows only
+   * (migration 063). Swapped in per reader by ContentLocaleInterceptor;
+   * never accepted from a request.
+   */
+  @Column({ type: DataType.JSONB, allowNull: true })
+  declare translations: ContentTranslations | null;
 
   @CreatedAt declare createdAt: Date;
   @UpdatedAt declare updatedAt: Date;

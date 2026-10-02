@@ -11,7 +11,12 @@ import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { Op, Transaction } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 
-import { apiError } from '../../common/i18n';
+import {
+  apiError,
+  toLocale,
+  translatedText,
+  type Locale,
+} from '../../common/i18n';
 import { escapeLikeWildcards } from '../../common/utils/search.utils';
 
 import {
@@ -173,11 +178,15 @@ export class ProgramAssignmentService {
     // Pull the client display name for the notification (we already
     // have instructorName via the controller).
     const client = await this.userModel.findByPk(dto.clientId, {
-      attributes: ['id', 'firstName', 'lastName'],
+      attributes: ['id', 'firstName', 'lastName', 'language'],
     });
     if (!client) {
       throw new NotFoundException(apiError('workout.clientNotFound'));
     }
+    // The assignment is the client's copy of the plan, so a starter's text
+    // is written in the language they train in.
+    const clientLocale = toLocale(client.language);
+    const programName = translatedText(program, 'name', clientLocale);
 
     // Resolved before the transaction opens: a day-count mismatch is a bad
     // request and should be refused before anything is written.
@@ -190,7 +199,7 @@ export class ProgramAssignmentService {
           clientId: dto.clientId,
           instructorClientId: relationship.id,
           masterProgramId: program.id,
-          programNameSnapshot: program.name,
+          programNameSnapshot: programName,
           status: ProgramAssignmentStatus.Active,
           startDate: dto.startDate,
           endDate: this.computeEndDate(program, dto.startDate, dayMap),
@@ -200,7 +209,14 @@ export class ProgramAssignmentService {
         { transaction: tx },
       );
 
-      await this.cloneTree(assignment.id, program, dto.startDate, tx, dayMap);
+      await this.cloneTree(
+        assignment.id,
+        program,
+        dto.startDate,
+        tx,
+        dayMap,
+        clientLocale,
+      );
       return assignment;
     });
 
@@ -211,7 +227,7 @@ export class ProgramAssignmentService {
         programAssignedForClient({
           clientId: dto.clientId,
           assignmentId: created.id,
-          programName: program.name,
+          programName,
           startDate: dto.startDate,
           instructorName: instructorDisplayName,
         }),
@@ -359,6 +375,7 @@ export class ProgramAssignmentService {
                     'kind',
                     'level',
                     'thumbnailUrl',
+                    'translations',
                   ],
                 },
                 {
@@ -953,7 +970,9 @@ export class ProgramAssignmentService {
     program: Program,
     startDate: string,
     tx: Transaction,
-    dayMap?: Map<number, number> | null,
+    dayMap: Map<number, number> | null | undefined,
+    /** Language a starter's text is copied in; a coach's own is as written. */
+    locale: Locale,
   ): Promise<void> {
     const workouts = program.workouts ?? [];
     if (workouts.length === 0) {
@@ -967,8 +986,8 @@ export class ProgramAssignmentService {
         {
           programAssignmentId: assignmentId,
           masterWorkoutId: pw.id,
-          name: pw.name,
-          notes: pw.notes,
+          name: translatedText(pw, 'name', locale),
+          notes: translatedText(pw, 'notes', locale),
           weekIndex: pw.weekIndex,
           // The slot the client sees, not the one the program was drawn on.
           dayIndex: dayMap?.get(pw.dayIndex) ?? pw.dayIndex,
@@ -994,7 +1013,7 @@ export class ProgramAssignmentService {
             masterExerciseId: pe.id,
             supersetGroupId: pe.supersetGroupId,
             orderIndex: pe.orderIndex,
-            notes: pe.notes,
+            notes: translatedText(pe, 'notes', locale),
             alternateExerciseId: pe.alternateExerciseId,
             isModifiedFromMaster: false,
           },

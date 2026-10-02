@@ -13,6 +13,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { requestLocale } from '../../common/i18n';
 import type { AuthenticatedRequest } from '../../common/types/authenticated-request';
 import { WorkoutLogService } from './workout-log.service';
 
@@ -51,6 +52,10 @@ export class InstructorWorkoutLogController {
     @Request() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.workoutLogService.findByIdForInstructor(id, req.user.id);
+    return this.workoutLogService.findByIdForInstructor(
+      id,
+      req.user.id,
+      requestLocale(req),
+    );
   }
 }

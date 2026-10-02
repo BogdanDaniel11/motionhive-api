@@ -14,6 +14,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiTags } from '@nestjs/swagger';
 import { ApiEndpoint } from '../../../common/decorators/api-response.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
+import { RawContent } from '../../../common/decorators/raw-content.decorator';
 import { AdminDocs } from '../../../common/docs/admin.docs';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import type { AuthenticatedRequest } from '../../../common/types/authenticated-request';
@@ -23,6 +24,7 @@ import { AdminUpdateExerciseDto } from '../dto/admin-update-exercise.dto';
 
 /** Curated domain browsers. Read ADMIN/SUPPORT+; group delete ADMIN+. */
 @ApiTags('Admin — Domains')
+@RawContent()
 @Controller('admin/domain')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('ADMIN', 'SUPER_ADMIN', 'SUPPORT')

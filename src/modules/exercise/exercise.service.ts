@@ -8,9 +8,20 @@ import {
 import type { LoggerService } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
-import { Op, QueryTypes, Transaction, WhereOptions, literal } from 'sequelize';
+import {
+  Op,
+  Order,
+  QueryTypes,
+  Transaction,
+  WhereOptions,
+  literal,
+} from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
-import { apiError } from '../../common/i18n';
+import { apiError, Locale } from '../../common/i18n';
+import {
+  escapeLikeWildcards,
+  normalizeSearchTerm,
+} from '../../common/utils/search.utils';
 import { assertOwned } from '../../common/utils/ownership.utils';
 import {
   buildPaginatedResponse,
@@ -129,7 +140,11 @@ export class ExerciseService {
    */
   async list(filter: ListExercisesQueryDto, principal: PrincipalContext) {
     const where = this.buildListWhere(filter, principal);
-    const order = this.buildOrder(filter.sort ?? ExerciseSortKey.Name);
+    const order = this.buildOrder(
+      filter.sort ?? ExerciseSortKey.Name,
+      principal.locale,
+      filter.search,
+    );
 
     const page = filter.page ?? 1;
     const limit = filter.limit ?? 20;
@@ -547,8 +562,20 @@ export class ExerciseService {
         break;
     }
 
-    if (filter.search) {
-      conds.push({ name: { [Op.iLike]: `%${filter.search.trim()}%` } });
+    const term = this.searchTerm(filter.search);
+    if (term) {
+      // `search_name` holds the English name and every translated one,
+      // lowercased and without diacritics (migration 063), so "squats"
+      // finds "Genuflexiuni cu haltera" whatever language the reader is in.
+      // A contains match, or a close match (`<%`, word similarity) that
+      // forgives plurals and a missing letter.
+      const pattern = this.sequelize.escape(`%${escapeLikeWildcards(term)}%`);
+      const word = this.sequelize.escape(term);
+      conds.push(
+        literal(
+          `("Exercise".search_name LIKE ${pattern} OR ${word} <% "Exercise".search_name)`,
+        ) as unknown as WhereOptions<Exercise>,
+      );
     }
     if (filter.kind?.length) conds.push({ kind: { [Op.in]: filter.kind } });
     if (filter.level?.length) conds.push({ level: { [Op.in]: filter.level } });
@@ -593,7 +620,27 @@ export class ExerciseService {
     return { [Op.and]: conds };
   }
 
-  private buildOrder(sort: ExerciseSortKey): Array<[string, 'ASC' | 'DESC']> {
+  /** Lowercase, no diacritics, single spaces: matches `search_name`. */
+  private searchTerm(search: string | undefined): string {
+    return search ? normalizeSearchTerm(search).toLowerCase() : '';
+  }
+
+  private buildOrder(
+    sort: ExerciseSortKey,
+    locale: Locale,
+    search: string | undefined,
+  ): Order {
+    // The name the reader sees, folded, so Romanian names sort where a
+    // Romanian expects them ("Împins" with the I's, not after Z).
+    const byName: Order = [
+      [
+        literal(
+          `fold_for_search(COALESCE("Exercise".translations -> ${this.sequelize.escape(locale)} ->> 'name', "Exercise".name))`,
+        ),
+        'ASC',
+      ],
+      ['id', 'ASC'],
+    ];
     switch (sort) {
       case ExerciseSortKey.Newest:
         return [['createdAt', 'DESC']];
@@ -602,13 +649,21 @@ export class ExerciseService {
         // applied to a non-public-filtered scan still works but the planner
         // falls back to a seq scan. Acceptable — list queries always pair
         // this sort with `ownership='public-others'` from the UI.
-        return [
-          ['forkCount', 'DESC'],
-          ['name', 'ASC'],
-        ];
+        return [['forkCount', 'DESC'], ...byName];
       case ExerciseSortKey.Name:
-      default:
-        return [['name', 'ASC']];
+      default: {
+        // While searching, the best match leads: names that contain what
+        // was typed, then close matches by how close, then A to Z.
+        const term = this.searchTerm(search);
+        if (!term) return byName;
+        const pattern = this.sequelize.escape(`%${escapeLikeWildcards(term)}%`);
+        const word = this.sequelize.escape(term);
+        return [
+          [literal(`("Exercise".search_name LIKE ${pattern})`), 'DESC'],
+          [literal(`word_similarity(${word}, "Exercise".search_name)`), 'DESC'],
+          ...byName,
+        ];
+      }
     }
   }
 

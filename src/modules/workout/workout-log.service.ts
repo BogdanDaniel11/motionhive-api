@@ -15,7 +15,13 @@ import {
   getOffset,
 } from '../../common/dto/pagination.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
-import { apiError } from '../../common/i18n';
+import {
+  DEFAULT_LOCALE,
+  apiError,
+  translate,
+  translatedText,
+  type Locale,
+} from '../../common/i18n';
 import { escapeLikeWildcards } from '../../common/utils/search.utils';
 import { ListWorkoutLogsQueryDto } from './dto/list-workout-logs.query.dto';
 import {
@@ -109,13 +115,18 @@ export class WorkoutLogService {
   // Start
   // ────────────────────────────────────────────────────────────────────
 
-  async start(userId: string, dto: StartWorkoutDto): Promise<WorkoutLog> {
+  async start(
+    userId: string,
+    dto: StartWorkoutDto,
+    /** The person's language: names copied into the log are written in it. */
+    locale: Locale = DEFAULT_LOCALE,
+  ): Promise<WorkoutLog> {
     if (dto.assignedWorkoutId && dto.programId) {
       throw new BadRequestException(apiError('workout.startOneSource'));
     }
 
     if (dto.programId) {
-      return this._startFromProgram(userId, dto.programId);
+      return this._startFromProgram(userId, dto.programId, locale);
     }
 
     if (!dto.assignedWorkoutId && !dto.name?.trim()) {
@@ -144,7 +155,7 @@ export class WorkoutLogService {
             {
               model: Exercise,
               as: 'exercise',
-              attributes: ['id', 'name', 'thumbnailUrl'],
+              attributes: ['id', 'name', 'thumbnailUrl', 'translations'],
             },
             {
               model: AssignedSet,
@@ -202,7 +213,7 @@ export class WorkoutLogService {
             workoutLogId: log.id,
             exerciseId: ae.exerciseId,
             assignedExerciseId: ae.id,
-            exerciseNameSnapshot: ae.exercise?.name ?? 'Exercise',
+            exerciseNameSnapshot: this._exerciseName(ae.exercise, locale),
             exerciseThumbnailUrlSnapshot: ae.exercise?.thumbnailUrl ?? null,
             orderIndex: ae.orderIndex,
             supersetGroupId: ae.supersetGroupId,
@@ -272,6 +283,7 @@ export class WorkoutLogService {
   private async _startFromProgram(
     userId: string,
     programId: string,
+    locale: Locale,
   ): Promise<WorkoutLog> {
     const program = await this.programModel.findByPk(programId, {
       include: [
@@ -305,7 +317,7 @@ export class WorkoutLogService {
         {
           model: Exercise,
           as: 'exercise',
-          attributes: ['id', 'name', 'thumbnailUrl'],
+          attributes: ['id', 'name', 'thumbnailUrl', 'translations'],
         },
         {
           model: PrescribedSet,
@@ -326,7 +338,10 @@ export class WorkoutLogService {
           // one. Both used to write nothing here and were then
           // indistinguishable in history.
           sourceProgramId: program.id,
-          name: program.isSingleWorkout ? program.name : workout.name,
+          // A starter's text is copied in the person's language.
+          name: program.isSingleWorkout
+            ? translatedText(program, 'name', locale)
+            : translatedText(workout, 'name', locale),
           status: WorkoutLogStatus.InProgress,
         },
         { transaction: tx },
@@ -339,11 +354,11 @@ export class WorkoutLogService {
             exerciseId: px.exerciseId,
             assignedExerciseId: null,
             prescribedExerciseId: px.id,
-            exerciseNameSnapshot: px.exercise?.name ?? 'Exercise',
+            exerciseNameSnapshot: this._exerciseName(px.exercise, locale),
             exerciseThumbnailUrlSnapshot: px.exercise?.thumbnailUrl ?? null,
             orderIndex: px.orderIndex,
             supersetGroupId: px.supersetGroupId,
-            notes: px.notes,
+            notes: translatedText(px, 'notes', locale),
           },
           { transaction: tx },
         );
@@ -564,6 +579,7 @@ export class WorkoutLogService {
     exerciseId: string,
     userId: string,
     defaultSets = 0,
+    locale: Locale = DEFAULT_LOCALE,
   ): Promise<LoggedExercise> {
     const log = await this._loadOwnedLog(workoutLogId, userId);
     if (log.status !== WorkoutLogStatus.InProgress) {
@@ -572,7 +588,14 @@ export class WorkoutLogService {
       );
     }
     const exercise = await this.exerciseModel.findByPk(exerciseId, {
-      attributes: ['id', 'name', 'thumbnailUrl', 'visibility', 'ownerId'],
+      attributes: [
+        'id',
+        'name',
+        'thumbnailUrl',
+        'visibility',
+        'ownerId',
+        'translations',
+      ],
     });
     if (
       !exercise ||
@@ -593,7 +616,7 @@ export class WorkoutLogService {
           workoutLogId,
           exerciseId,
           assignedExerciseId: null,
-          exerciseNameSnapshot: exercise.name,
+          exerciseNameSnapshot: this._exerciseName(exercise, locale),
           exerciseThumbnailUrlSnapshot: exercise.thumbnailUrl,
           orderIndex,
           supersetGroupId: null,
@@ -684,6 +707,7 @@ export class WorkoutLogService {
     loggedExerciseId: string,
     userId: string,
     newExerciseId: string,
+    locale: Locale = DEFAULT_LOCALE,
   ): Promise<LoggedExercise> {
     const log = await this._loadOwnedLog(workoutLogId, userId);
     if (log.status !== WorkoutLogStatus.InProgress) {
@@ -719,7 +743,7 @@ export class WorkoutLogService {
     await ex.update({
       exerciseId: next.id,
       swappedFromExerciseId: swappedFrom,
-      exerciseNameSnapshot: next.name,
+      exerciseNameSnapshot: this._exerciseName(next, locale),
       exerciseThumbnailUrlSnapshot: next.thumbnailUrl ?? null,
     });
     return ex;
@@ -1063,7 +1087,10 @@ export class WorkoutLogService {
    * can render them on the workout-complete screen. Returns an empty
    * array when the log isn't completed yet or hit no PRs.
    */
-  private async _findSessionPrs(log: WorkoutLog): Promise<
+  private async _findSessionPrs(
+    log: WorkoutLog,
+    locale: Locale,
+  ): Promise<
     {
       id: string;
       exerciseId: string;
@@ -1088,7 +1115,7 @@ export class WorkoutLogService {
         {
           model: Exercise,
           as: 'exercise',
-          attributes: ['id', 'name'],
+          attributes: ['id', 'name', 'translations'],
         },
       ],
     });
@@ -1109,9 +1136,10 @@ export class WorkoutLogService {
         const deltaKg = prior
           ? Math.round((pr.weightKg - prior.weightKg) * 100) / 100
           : pr.weightKg;
-        const exerciseName =
-          (pr as unknown as { exercise?: { name?: string } }).exercise?.name ??
-          'Exercise';
+        const exerciseName = this._exerciseName(
+          (pr as unknown as { exercise?: Exercise | null }).exercise,
+          locale,
+        );
         return {
           id: pr.id,
           exerciseId: pr.exerciseId,
@@ -1150,7 +1178,7 @@ export class WorkoutLogService {
         {
           model: Exercise,
           as: 'exercise',
-          attributes: ['id', 'name', 'slug', 'kind'],
+          attributes: ['id', 'name', 'slug', 'kind', 'translations'],
         },
       ],
       order: [['recordedAt', 'DESC']],
@@ -1326,7 +1354,12 @@ export class WorkoutLogService {
     return map;
   }
 
-  async findById(id: string, userId: string): Promise<WorkoutLog> {
+  async findById(
+    id: string,
+    userId: string,
+    /** The reader's language, for the names of records set in the session. */
+    locale: Locale = DEFAULT_LOCALE,
+  ): Promise<WorkoutLog> {
     const log = await this.logModel.findByPk(id, {
       include: [
         // Same provenance the list carries, so the replay header can
@@ -1359,6 +1392,9 @@ export class WorkoutLogService {
                 // Drives the set row: `kind` picks which fields show at
                 // all, `isUnilateral` makes reps read as per-side.
                 'isUnilateral',
+                // Read by ContentLocaleInterceptor, which also points the
+                // name snapshot at the reader's language.
+                'translations',
               ],
               required: false,
             },
@@ -1367,7 +1403,7 @@ export class WorkoutLogService {
               // it tells them nothing.
               model: Exercise,
               as: 'swappedFromExercise',
-              attributes: ['id', 'name'],
+              attributes: ['id', 'name', 'translations'],
               required: false,
             },
             {
@@ -1397,7 +1433,7 @@ export class WorkoutLogService {
     // the workout-complete trophy tile without a second hop. Sequelize
     // strips arbitrary props on JSON serialization, so we project to
     // a plain object first.
-    const prs = await this._findSessionPrs(log);
+    const prs = await this._findSessionPrs(log, locale);
     const plain = log.get({ plain: true }) as WorkoutLog & {
       personalRecords?: typeof prs;
     };
@@ -1480,6 +1516,7 @@ export class WorkoutLogService {
   async findByIdForInstructor(
     id: string,
     instructorId: string,
+    locale: Locale = DEFAULT_LOCALE,
   ): Promise<WorkoutLog> {
     const stub = await this.logModel.findByPk(id, {
       attributes: ['userId', 'programAssignmentId'],
@@ -1498,7 +1535,7 @@ export class WorkoutLogService {
     ) {
       throw new NotFoundException(apiError('workout.logNotFound'));
     }
-    return this.findById(id, stub.userId);
+    return this.findById(id, stub.userId, locale);
   }
 
   /**
@@ -1555,6 +1592,20 @@ export class WorkoutLogService {
   // ────────────────────────────────────────────────────────────────────
   // Internals
   // ────────────────────────────────────────────────────────────────────
+
+  /**
+   * The name a log keeps for an exercise: translated when it is one of
+   * ours, and a plain "Exercise" in the person's language when the row is
+   * gone.
+   */
+  private _exerciseName(
+    exercise: Exercise | null | undefined,
+    locale: Locale,
+  ): string {
+    return exercise
+      ? translatedText(exercise, 'name', locale)
+      : translate(locale, 'content.unnamedExercise');
+  }
 
   private async _loadOwnedLog(id: string, userId: string): Promise<WorkoutLog> {
     const log = await this.logModel.findByPk(id);

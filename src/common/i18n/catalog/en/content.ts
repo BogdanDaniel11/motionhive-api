@@ -6,4 +6,6 @@
 export const content = {
   /** Name of a program a user copies into their library. */
   programCopyName: '{name} (my copy)',
+  /** Logged in place of an exercise that no longer exists. */
+  unnamedExercise: 'Exercise',
 };

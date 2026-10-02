@@ -11,6 +11,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiTags } from '@nestjs/swagger';
 import { ApiEndpoint } from '../../../common/decorators/api-response.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
+import { RawContent } from '../../../common/decorators/raw-content.decorator';
 import { AdminDocs } from '../../../common/docs/admin.docs';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import type { AuthenticatedRequest } from '../../../common/types/authenticated-request';
@@ -19,6 +20,7 @@ import { ImpersonateDto } from '../dto/impersonate.dto';
 
 /** Impersonation surface — SUPER_ADMIN only, every call audited. */
 @ApiTags('Admin — Impersonation')
+@RawContent()
 @Controller('admin/impersonate')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('SUPER_ADMIN')
