@@ -9,7 +9,7 @@ export const session = {
   },
   bookingWaitlisted: {
     title: 'Joined the waitlist',
-    body: '"{title}" on {when} is full — we\'ll let you know if a seat opens.',
+    body: '"{title}" on {when} is full. We\'ll let you know if a seat opens.',
   },
   bookingApproved: {
     title: 'Booking approved',
@@ -25,7 +25,7 @@ export const session = {
   },
   bookingPromoted: {
     title: "You're in!",
-    body: 'A seat opened up — you\'re now confirmed for "{title}" on {when}.',
+    body: 'A seat opened up, so you\'re now confirmed for "{title}" on {when}.',
   },
   cancelled: {
     title: 'Session cancelled',
@@ -44,7 +44,7 @@ export const session = {
     body: '"{title}" starts in about an hour ({when}).',
   },
   followUp: {
-    title: 'Note from your instructor — {title}',
+    title: 'Note from your coach after "{title}"',
     body: '{text}',
   },
   participantJoined: {

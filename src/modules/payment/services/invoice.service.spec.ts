@@ -555,7 +555,7 @@ describe('InvoiceService — Phase 7 notification wiring', () => {
       await service.sendInvoice('user-1', 'inv-1');
 
       const text = notificationText(notificationMock.notify.mock.calls[0][0]);
-      expect(text.body).toMatch(/open to view details/i);
+      expect(text.body).toMatch(/open it to see the details/i);
       expect(text.body).not.toMatch(/due/i);
     });
 

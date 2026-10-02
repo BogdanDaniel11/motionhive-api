@@ -1,7 +1,7 @@
 export const payment = {
   invoiceCreated: {
     title: 'New invoice',
-    body: '{due, select, null {{amount} — open to view details.} other {{amount} due {due}.}}',
+    body: '{due, select, null {{amount}. Open it to see the details.} other {{amount} due {due}.}}',
   },
   invoicePaidForInstructor: {
     title: 'Invoice paid',
@@ -9,7 +9,7 @@ export const payment = {
   },
   invoicePaidForClient: {
     title: 'Payment received',
-    body: 'Thanks — your payment has been processed.',
+    body: 'Thanks, your payment has been processed.',
   },
   invoiceMarkedPaid: {
     title: 'Invoice marked paid',
@@ -81,7 +81,7 @@ export const payment = {
   },
   stripeAccountDisconnected: {
     title: 'Stripe account disconnected',
-    body: 'Your Stripe account was disconnected. {count, plural, =0 {} one {# active subscription will end at the current billing period — no future charges. } other {# active subscriptions will end at the current billing period — no future charges. }}You can reconnect from the payments page.',
+    body: 'Your Stripe account was disconnected. {count, plural, =0 {} one {# active subscription will end at the current billing period, with no future charges. } other {# active subscriptions will end at the current billing period, with no future charges. }}You can reconnect from the payments page.',
   },
   disputeEvidenceDue: {
     title: 'Dispute evidence due soon',

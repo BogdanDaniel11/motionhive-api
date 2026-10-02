@@ -1,7 +1,7 @@
 export const post = {
   pendingApproval: {
     title: 'A post needs your review',
-    body: '{name, select, null {A member} other {{name}}} posted{group, select, null {} other { in "{group}"}} — review it from the group.',
+    body: '{name, select, null {A member} other {{name}}} posted{group, select, null {} other { in "{group}"}}. Review it from the group.',
   },
   approved: {
     title: 'Your post was approved',

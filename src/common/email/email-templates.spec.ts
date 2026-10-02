@@ -49,7 +49,7 @@ const withoutStyleBlock = (html: string) =>
 const HTML_TAG = /<[a-z][^>]*>/i;
 const HTML_ENTITY = /&(?:[a-z][a-z0-9]*|#\d+|#x[0-9a-f]+);/i;
 
-/** Romanian copy uses neither dashes nor the legacy cedilla letters. */
+/** No dashes in any language; Romanian also avoids the legacy cedilla letters. */
 const DASH = /[—–]/;
 const CEDILLA = /[şţŞŢ]/;
 
@@ -134,11 +134,17 @@ describe.each(SUPPORTED_LOCALES)('emails rendered in %s', (locale) => {
     },
   );
 
+  it.each(EMAIL_SAMPLES)('$name uses no dash as punctuation', (sample) => {
+    const r = rendered(sample);
+    for (const part of [r.subject, r.text]) {
+      expect(part).not.toMatch(DASH);
+    }
+  });
+
   if (locale === 'ro') {
-    it.each(EMAIL_SAMPLES)('$name uses Romanian typography', (sample) => {
+    it.each(EMAIL_SAMPLES)('$name uses Romanian letters', (sample) => {
       const r = rendered(sample);
       for (const part of [r.subject, r.text]) {
-        expect(part).not.toMatch(DASH);
         expect(part).not.toMatch(CEDILLA);
       }
     });

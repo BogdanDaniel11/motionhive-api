@@ -15,7 +15,7 @@ export const group = {
     subheading:
       '{name, select, null {Someone} other {{name}}} wants you to join their team',
     cardRole: 'Sent you an invitation',
-    body: '{name, select, null {Someone} other {**{name}**}} has invited you to join **{group}** on MotionHive — a fitness platform for instructors and clients.',
+    body: '{name, select, null {Someone} other {**{name}**}} has invited you to join **{group}** on MotionHive, a fitness platform for coaches and their clients.',
     /** The inviter's own words, shown as a quote in the HTML email. */
     quote: '"{message}"',
     /** The same message in the plain-text email, where it needs a label. */
@@ -34,7 +34,7 @@ export const group = {
       '{name, select, null {Someone} other {{name}}} accepted your invitation to {group, select, null {your group} other {{group}}}',
     eyebrow: 'INVITATION ACCEPTED',
     heading: 'Invitation accepted!',
-    subheading: 'Great news — someone joined your group',
+    subheading: 'Great news: someone joined your group',
     body: '{firstName, select, null {Hi there,} other {Hi {firstName},}} {name, select, null {someone} other {**{name}**}} has accepted your invitation and joined {group, select, null {your group} other {**{group}**}}.',
     cta: 'Open MotionHive',
     detail: 'You can view your group members in the MotionHive app.',
@@ -45,7 +45,7 @@ export const group = {
     preheader:
       '{name, select, null {Someone} other {{name}}} declined your invitation to {group}',
     heading: 'Invitation declined',
-    subheading: "Heads up — your invitation wasn't accepted",
+    subheading: "Heads up: your invitation wasn't accepted",
     body: '{firstName, select, null {Hi there,} other {Hi {firstName},}} {name, select, null {someone} other {**{name}**}} declined your invitation to join **{group}**.',
     note: 'You can always invite someone else from the group settings whenever you want.',
   },
@@ -91,7 +91,7 @@ export const group = {
   joinRequestDecided: {
     greeting: '{firstName, select, null {Hi there,} other {Hi {firstName},}}',
     approved: {
-      subject: "You're in — {group} accepted your request",
+      subject: "You're in: {group} accepted your request",
       preheader: 'Your request to join {group} was approved',
       eyebrow: 'REQUEST APPROVED',
       heading: "You're in!",
@@ -105,7 +105,7 @@ export const group = {
       preheader: 'Update on your request to join {group}',
       heading: 'Request update',
       subheading: "The owner of {group} couldn't add you this time",
-      body: "The owner of **{group}** declined your request to join. This isn't personal — sometimes groups are full, paused, or only accepting people they already know.",
+      body: "The owner of **{group}** declined your request to join. This isn't personal. Sometimes groups are full, paused, or only accepting people they already know.",
       cta: 'Find another group',
       note: 'You can request to join again later if the group opens up.',
     },

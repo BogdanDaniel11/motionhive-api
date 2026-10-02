@@ -20,9 +20,9 @@ describe('emailCopy', () => {
 
   it('turns **bold** into <strong> in html and drops it in text', () => {
     expect(en.html('featureSessions')).toMatch(
-      /^<strong>Join sessions<\/strong> — /,
+      /^<strong>Join sessions\.<\/strong> Find/,
     );
-    expect(en.text('featureSessions')).toMatch(/^Join sessions — /);
+    expect(en.text('featureSessions')).toMatch(/^Join sessions\. Find/);
     expect(ro.text('featureSessions')).not.toContain('*');
   });
 

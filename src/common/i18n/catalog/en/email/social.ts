@@ -24,7 +24,7 @@ export const social = {
     preheader:
       '{recommender, select, null {A MotionHive user} other {{recommender}}} suggested you join MotionHive',
     eyebrow: 'SUGGESTION',
-    heading: "Hey {coach} — someone thinks you'd be a great fit here",
+    heading: "Hey {coach}, someone thinks you'd be a great fit here",
     subheading:
       '{recommender, select, null {A MotionHive user} other {{recommender}}} suggested you join MotionHive',
     /** Name on the person card when the recommender has no name on file. */
@@ -35,6 +35,6 @@ export const social = {
     note: '"{note}"',
     noteText: 'Note: "{note}"',
     cta: 'Set up your coach profile',
-    security: "If this isn't for you, no worries — just ignore this email.",
+    security: "If this isn't for you, no worries. Just ignore this email.",
   },
 };

@@ -135,7 +135,7 @@ export const client = {
         body: '{recipient, select, null {Hi there,} other {Hi {recipient},}} **{name}** ended your coaching collaboration on MotionHive. They no longer appear in your client list.',
       },
       membershipNote:
-        "Any active memberships this client has with you remain in place until they (or you) cancel them — ending the collaboration doesn't auto-cancel subscriptions.",
+        "Any active memberships this client has with you remain in place until they (or you) cancel them. Stopping the training together doesn't cancel subscriptions automatically.",
       reconnect: 'You can always reconnect later by sending a new invitation.',
       footerNote:
         "You're receiving this because a coaching collaboration on your MotionHive account changed status.",

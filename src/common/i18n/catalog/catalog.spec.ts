@@ -53,6 +53,18 @@ describe('i18n catalog', () => {
     },
   );
 
+  it.each(SUPPORTED_LOCALES)(
+    '%s: no message uses a dash as punctuation',
+    (locale) => {
+      // House rule for everything a person reads, in every language:
+      // a comma, full stop or colon instead of an em or en dash.
+      const dashed = flatten(CATALOG[locale]).filter(([, message]) =>
+        /[\u2013\u2014]| - /.test(message),
+      );
+      expect(dashed).toEqual([]);
+    },
+  );
+
   it('every notification message has a title and a body', () => {
     for (const [module, messages] of Object.entries(
       CATALOG[DEFAULT_LOCALE].notifications,
