@@ -19,7 +19,7 @@ import {
 } from '../notification-categories';
 import { NotificationType } from '../notification-types';
 import { renderStoredNotification } from '../notification-message';
-import type { Locale } from '../../../common/i18n';
+import { apiError, type Locale } from '../../../common/i18n';
 
 /**
  * Shape returned to the FE — flattens the (notification + receipt)
@@ -276,7 +276,7 @@ export class NotificationReceiptService {
       where: { id: receiptId, userId },
     });
     if (deleted === 0) {
-      throw new NotFoundException('Notification not found');
+      throw new NotFoundException(apiError('notification.notFound'));
     }
   }
 
@@ -333,7 +333,7 @@ export class NotificationReceiptService {
     });
     if (!receipt) {
       // 404 (not 403) — don't leak existence of receipts owned by others.
-      throw new NotFoundException('Notification not found');
+      throw new NotFoundException(apiError('notification.notFound'));
     }
     return receipt;
   }

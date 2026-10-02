@@ -22,6 +22,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { SearchUsersQueryDto } from './dto/search-users.query.dto';
 import { ApiEndpoint } from '../../common/decorators/api-response.decorator';
 import { UserDocs } from '../../common/docs/user.docs';
+import { apiError } from '../../common/i18n';
 
 /**
  * User Controller
@@ -121,14 +122,16 @@ export class UserController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) {
-      throw new BadRequestException('No file provided.');
+      throw new BadRequestException(apiError('common.noFile'));
     }
     if (!file.mimetype?.startsWith('image/')) {
-      throw new BadRequestException('Only image files are accepted.');
+      throw new BadRequestException(apiError('common.imageOnly'));
     }
     const MAX_BYTES = 5 * 1024 * 1024;
     if (file.size > MAX_BYTES) {
-      throw new BadRequestException('File is larger than 5 MB.');
+      throw new BadRequestException(
+        apiError('common.fileTooLarge', { maxMb: 5 }),
+      );
     }
     const user = await this.userService.uploadAvatar(req.user.id, file);
     return {

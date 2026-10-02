@@ -19,6 +19,7 @@ import {
 import { StripeService } from './stripe.service';
 import { CustomerService } from './customer.service';
 import { CreateCheckoutDto } from '../dto/create-checkout.dto';
+import { apiError } from '../../../common/i18n';
 
 /**
  * Canonical waiver text saved to `payment_consent`. Bilingual on purpose:
@@ -69,23 +70,22 @@ export class CheckoutService {
     requestContext: { ip?: string; userAgent?: string },
   ): Promise<{ url: string }> {
     const invoice = await this.invoiceModel.findByPk(invoiceId);
-    if (!invoice) throw new NotFoundException('Invoice not found.');
+    if (!invoice)
+      throw new NotFoundException(apiError('payment.invoiceNotFound'));
     if (invoice.clientId !== clientUserId) {
-      throw new ForbiddenException('You cannot pay this invoice.');
+      throw new ForbiddenException(apiError('payment.cannotPayInvoice'));
     }
     if (invoice.status === InvoiceStatus.PAID) {
-      throw new BadRequestException('Invoice already paid.');
+      throw new BadRequestException(apiError('payment.invoiceAlreadyPaid'));
     }
     if (invoice.status === InvoiceStatus.VOID) {
-      throw new BadRequestException('Invoice has been voided.');
+      throw new BadRequestException(apiError('payment.invoiceVoided'));
     }
 
     // EU waiver gating + audit log.
     if (invoice.requiresImmediateAccessWaiver) {
       if (!dto.immediateAccessWaiverAccepted) {
-        throw new BadRequestException(
-          'You must accept the immediate-access waiver to pay this invoice.',
-        );
+        throw new BadRequestException(apiError('payment.waiverRequired'));
       }
       const tx = await this.sequelize.transaction();
       try {
@@ -118,9 +118,7 @@ export class CheckoutService {
     // return the hosted URL. We keep the method name + DTO so the front-end
     // doesn't care about the implementation detail.
     if (!invoice.hostedInvoiceUrl) {
-      throw new BadRequestException(
-        'Invoice is not finalized yet. Ask the instructor to send it.',
-      );
+      throw new BadRequestException(apiError('payment.invoiceNotSent'));
     }
     return { url: invoice.hostedInvoiceUrl };
   }
@@ -132,7 +130,7 @@ export class CheckoutService {
       usage: 'off_session',
     });
     if (!intent.client_secret) {
-      throw new BadRequestException('Failed to create SetupIntent.');
+      throw new BadRequestException(apiError('payment.cardSetupFailed'));
     }
     return { clientSecret: intent.client_secret };
   }

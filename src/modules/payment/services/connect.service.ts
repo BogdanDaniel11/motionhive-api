@@ -26,6 +26,7 @@ import {
   stripeAccountRestrictedForInstructor,
 } from '../notifications';
 import { NotificationOutbox } from '../../notification/notification-outbox';
+import { apiError } from '../../../common/i18n';
 
 /**
  * ConnectService
@@ -93,18 +94,14 @@ export class ConnectService {
 
     const user = await this.userModel.findByPk(userId, { transaction: tx });
     if (!user) {
-      throw new NotFoundException('User not found.');
+      throw new NotFoundException(apiError('payment.userNotFound'));
     }
     const countryCode = user.countryCode;
     if (!countryCode) {
-      throw new BadRequestException(
-        'Set your country on your profile before connecting payments.',
-      );
+      throw new BadRequestException(apiError('payment.countryRequired'));
     }
     if (!isStripeSupportedCountry(countryCode)) {
-      throw new BadRequestException(
-        `Stripe Connect is not available in ${countryCode} yet.`,
-      );
+      throw new BadRequestException(apiError('payment.countryNotSupported'));
     }
 
     const stripeAccount = await this.stripeService.stripe.accounts.create(
@@ -264,13 +261,11 @@ export class ConnectService {
       where: { userId },
     });
     if (!account) {
-      throw new NotFoundException(
-        'No Stripe Connect account found. Start onboarding first.',
-      );
+      throw new NotFoundException(apiError('payment.stripeAccountNotFound'));
     }
     if (!account.detailsSubmitted) {
       throw new UnprocessableEntityException(
-        'Complete Stripe onboarding before opening the Express Dashboard.',
+        apiError('payment.setupRequiredForDashboard'),
       );
     }
     const link = await this.stripeService.stripe.accounts.createLoginLink(

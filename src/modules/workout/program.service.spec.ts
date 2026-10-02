@@ -41,6 +41,7 @@ describe('ProgramService (smoke — not exhaustive)', () => {
 
   const programModel = {
     findByPk: jest.fn(),
+    findOne: jest.fn(),
     findAll: jest.fn(),
     findAndCountAll: jest.fn(),
     create: jest.fn(),
@@ -96,6 +97,36 @@ describe('ProgramService (smoke — not exhaustive)', () => {
       ],
     }).compile();
     service = module.get(ProgramService);
+  });
+
+  // ─── Copy into your library ──────────────────────────────────────
+
+  describe('duplicateForUser', () => {
+    const starter = {
+      id: 'p-src',
+      ownerId: null,
+      source: 'SYSTEM',
+      name: 'Full body starter',
+      workouts: [],
+    };
+
+    it.each([
+      ['en', 'Full body starter (my copy)'],
+      ['ro', 'Full body starter (copia mea)'],
+    ] as const)(
+      "names the copy in the copier's language (%s)",
+      async (locale, name) => {
+        programModel.findOne.mockResolvedValueOnce(starter);
+        programModel.create.mockResolvedValueOnce({ id: 'p-copy' });
+
+        await service.duplicateForUser('p-src', 'me', locale);
+
+        expect(programModel.create).toHaveBeenCalledWith(
+          expect.objectContaining({ ownerId: 'me', name }),
+          expect.anything(),
+        );
+      },
+    );
   });
 
   // ─── Ownership hide-existence ────────────────────────────────────

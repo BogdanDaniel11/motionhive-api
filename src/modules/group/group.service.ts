@@ -55,7 +55,7 @@ import {
   DecideJoinRequestDto,
   JoinRequestDecision,
 } from './dto/decide-join-request.dto';
-import { toLocale } from '../../common/i18n';
+import { apiError, toLocale } from '../../common/i18n';
 
 /**
  * Group Service
@@ -249,7 +249,7 @@ export class GroupService {
     }
 
     // Should never reach here, but TypeScript needs it
-    throw new BadRequestException('Failed to generate unique slug');
+    throw new BadRequestException(apiError('group.createFailed'));
   }
 
   /**
@@ -326,7 +326,7 @@ export class GroupService {
     });
 
     if (!group) {
-      throw new NotFoundException('Group not found');
+      throw new NotFoundException(apiError('group.notFound'));
     }
 
     const member = await this.assertMember(groupId, userId);
@@ -418,13 +418,11 @@ export class GroupService {
     });
 
     if (!member) {
-      throw new NotFoundException('You are not a member of this group');
+      throw new NotFoundException(apiError('group.notMember'));
     }
 
     if (member.isOwner) {
-      throw new ForbiddenException(
-        'Group owner cannot leave. Transfer ownership first or delete the group.',
-      );
+      throw new ForbiddenException(apiError('group.ownerCannotLeave'));
     }
 
     await member.update({ leftAt: new Date() });
@@ -507,7 +505,7 @@ export class GroupService {
     // First, get the group to know the instructor
     const group = await this.groupModel.findByPk(groupId);
     if (!group) {
-      throw new NotFoundException('Group not found');
+      throw new NotFoundException(apiError('group.notFound'));
     }
 
     const { rows: members, count: totalItems } =
@@ -578,7 +576,7 @@ export class GroupService {
     });
 
     if (!member) {
-      throw new NotFoundException('You are not a member of this group');
+      throw new NotFoundException(apiError('group.notMember'));
     }
 
     await member.update(dto);
@@ -602,11 +600,11 @@ export class GroupService {
     });
 
     if (!member) {
-      throw new NotFoundException('Member not found');
+      throw new NotFoundException(apiError('group.memberNotFound'));
     }
 
     if (member.isOwner) {
-      throw new ForbiddenException('Cannot remove the group owner');
+      throw new ForbiddenException(apiError('group.cannotRemoveOwner'));
     }
 
     await member.update({ leftAt: new Date() });
@@ -851,7 +849,7 @@ export class GroupService {
     });
 
     if (!group) {
-      throw new NotFoundException('Group not found or is not public');
+      throw new NotFoundException(apiError('group.notPublic'));
     }
 
     // Get the instructor (owner)
@@ -982,19 +980,15 @@ export class GroupService {
     const group = await this.groupModel.findByPk(groupId);
 
     if (!group || !group.isActive) {
-      throw new NotFoundException('Group not found');
+      throw new NotFoundException(apiError('group.notFound'));
     }
 
     if (!group.isPublic) {
-      throw new ForbiddenException(
-        'This group is not public. You need an invitation to join.',
-      );
+      throw new ForbiddenException(apiError('group.invitationRequired'));
     }
 
     if (group.joinPolicy === JoinPolicy.INVITE_ONLY) {
-      throw new ForbiddenException(
-        'This group requires an invitation to join.',
-      );
+      throw new ForbiddenException(apiError('group.inviteOnly'));
     }
 
     // Look up *any* existing membership row, including ones the user
@@ -1005,7 +999,7 @@ export class GroupService {
       where: { groupId, userId },
     });
     if (existingMember && existingMember.leftAt === null) {
-      throw new BadRequestException('You are already a member of this group');
+      throw new BadRequestException(apiError('group.alreadyMember'));
     }
 
     if (group.joinPolicy === JoinPolicy.OPEN) {
@@ -1159,11 +1153,11 @@ export class GroupService {
       where: { id: requestId, groupId },
     });
     if (!request) {
-      throw new NotFoundException('Join request not found');
+      throw new NotFoundException(apiError('group.joinRequestNotFound'));
     }
     if (request.status !== GroupJoinRequestStatus.PENDING) {
       throw new BadRequestException(
-        `This request is already ${request.status.toLowerCase()}`,
+        apiError('group.joinRequestAlreadyDecided', { status: request.status }),
       );
     }
 
@@ -1394,7 +1388,7 @@ export class GroupService {
     });
 
     if (!group || !group.isActive) {
-      throw new NotFoundException('Invalid or expired join link');
+      throw new NotFoundException(apiError('group.joinLinkInvalid'));
     }
 
     // Check expiry
@@ -1402,9 +1396,7 @@ export class GroupService {
       group.joinTokenExpiresAt &&
       new Date() > new Date(group.joinTokenExpiresAt)
     ) {
-      throw new BadRequestException(
-        'This join link has expired. Ask the group owner for a new one.',
-      );
+      throw new BadRequestException(apiError('group.joinLinkExpired'));
     }
 
     // Look up *any* existing membership row, including ones the user
@@ -1416,7 +1408,7 @@ export class GroupService {
     });
 
     if (existing && existing.leftAt === null) {
-      throw new BadRequestException('You are already a member of this group');
+      throw new BadRequestException(apiError('group.alreadyMember'));
     }
 
     let member: GroupMember;
@@ -1572,7 +1564,7 @@ export class GroupService {
     const group = await this.assertOwnerAndGet(groupId, currentOwnerId);
 
     if (currentOwnerId === newOwnerId) {
-      throw new BadRequestException('You are already the owner');
+      throw new BadRequestException(apiError('group.alreadyOwner'));
     }
 
     const newOwnerMember = await this.memberModel.findOne({
@@ -1580,9 +1572,7 @@ export class GroupService {
     });
 
     if (!newOwnerMember) {
-      throw new BadRequestException(
-        'New owner must be an active member of the group',
-      );
+      throw new BadRequestException(apiError('group.newOwnerNotMember'));
     }
 
     const sequelize = this.groupModel.sequelize!;
@@ -1789,7 +1779,7 @@ export class GroupService {
    */
   async assertOwnerAndGet(groupId: string, userId: string): Promise<Group> {
     const group = await this.groupModel.findByPk(groupId);
-    if (!group) throw new NotFoundException('Group not found');
+    if (!group) throw new NotFoundException(apiError('group.notFound'));
     await this.assertOwner(groupId, userId);
     return group;
   }
@@ -1803,7 +1793,7 @@ export class GroupService {
     });
 
     if (!member) {
-      throw new ForbiddenException('You are not a member of this group');
+      throw new ForbiddenException(apiError('group.notMember'));
     }
 
     return member;
@@ -1813,7 +1803,7 @@ export class GroupService {
     const member = await this.assertMember(groupId, userId);
 
     if (!member.isOwner) {
-      throw new ForbiddenException('Only the group owner can do this');
+      throw new ForbiddenException(apiError('group.ownerOnly'));
     }
   }
 
@@ -1834,21 +1824,17 @@ export class GroupService {
     const group = await this.assertOwnerAndGet(groupId, requestingUserId);
 
     if (requestingUserId === targetUserId) {
-      throw new BadRequestException(
-        'Use transfer ownership to change your own role',
-      );
+      throw new BadRequestException(apiError('group.cannotChangeOwnRole'));
     }
 
     const target = await this.memberModel.findOne({
       where: { groupId, userId: targetUserId, leftAt: null },
     });
     if (!target) {
-      throw new NotFoundException('Target user is not a member of this group');
+      throw new NotFoundException(apiError('group.targetNotMember'));
     }
     if (target.role === GroupMemberRole.OWNER) {
-      throw new ForbiddenException(
-        'Cannot change the owner via this endpoint — use transfer ownership',
-      );
+      throw new ForbiddenException(apiError('group.cannotChangeOwnerRole'));
     }
 
     const newRole =

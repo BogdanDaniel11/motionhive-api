@@ -15,6 +15,7 @@ import {
   getOffset,
 } from '../../common/dto/pagination.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
+import { apiError } from '../../common/i18n';
 import { escapeLikeWildcards } from '../../common/utils/search.utils';
 import { ListWorkoutLogsQueryDto } from './dto/list-workout-logs.query.dto';
 import {
@@ -110,9 +111,7 @@ export class WorkoutLogService {
 
   async start(userId: string, dto: StartWorkoutDto): Promise<WorkoutLog> {
     if (dto.assignedWorkoutId && dto.programId) {
-      throw new BadRequestException(
-        'Pass either assignedWorkoutId or programId, not both.',
-      );
+      throw new BadRequestException(apiError('workout.startOneSource'));
     }
 
     if (dto.programId) {
@@ -120,9 +119,7 @@ export class WorkoutLogService {
     }
 
     if (!dto.assignedWorkoutId && !dto.name?.trim()) {
-      throw new BadRequestException(
-        'Freestyle workouts require a name; assigned workouts require assignedWorkoutId.',
-      );
+      throw new BadRequestException(apiError('workout.freestyleNameRequired'));
     }
 
     if (!dto.assignedWorkoutId) {
@@ -160,7 +157,7 @@ export class WorkoutLogService {
       ],
     });
     if (!aw) {
-      throw new NotFoundException('Assigned workout not found.');
+      throw new NotFoundException(apiError('workout.workoutNotFound'));
     }
 
     // Authorization: the assigned workout must belong to an assignment
@@ -171,7 +168,7 @@ export class WorkoutLogService {
       userId,
     );
     if (!ownsAssignment) {
-      throw new NotFoundException('Assigned workout not found.');
+      throw new NotFoundException(apiError('workout.workoutNotFound'));
     }
 
     // Compute %1RM resolutions once, batched by exercise.
@@ -293,14 +290,12 @@ export class WorkoutLogService {
       program &&
       (program.ownerId === userId || program.source === ProgramSource.System);
     if (!readable) {
-      throw new NotFoundException('Program not found.');
+      throw new NotFoundException(apiError('workout.programNotFound'));
     }
 
     const workout = program.workouts?.[0];
     if (!workout) {
-      throw new BadRequestException(
-        'This program has no workouts yet, so there is nothing to start.',
-      );
+      throw new BadRequestException(apiError('workout.programNothingToStart'));
     }
 
     const pxs = await this.prescribedExerciseModel.findAll({
@@ -427,9 +422,7 @@ export class WorkoutLogService {
     });
 
     if (!loggedExercises.length) {
-      throw new BadRequestException(
-        'This workout has no exercises to save as a routine.',
-      );
+      throw new BadRequestException(apiError('workout.nothingToSaveAsRoutine'));
     }
 
     const bakeTargets =
@@ -517,7 +510,7 @@ export class WorkoutLogService {
     const log = await this._loadOwnedLog(workoutLogId, userId);
     if (log.status !== WorkoutLogStatus.InProgress) {
       throw new BadRequestException(
-        'Cannot log sets on a workout that is no longer in progress.',
+        apiError('workout.cannotLogSetsNotInProgress'),
       );
     }
     const set = await this.loggedSetModel.findByPk(setId, {
@@ -526,7 +519,7 @@ export class WorkoutLogService {
       ],
     });
     if (!set || set.exercise?.workoutLogId !== workoutLogId) {
-      throw new NotFoundException('Set not found.');
+      throw new NotFoundException(apiError('workout.setNotFound'));
     }
     await set.update({
       ...(dto.setType !== undefined && { setType: dto.setType }),
@@ -575,7 +568,7 @@ export class WorkoutLogService {
     const log = await this._loadOwnedLog(workoutLogId, userId);
     if (log.status !== WorkoutLogStatus.InProgress) {
       throw new BadRequestException(
-        'Cannot add exercises to a workout that is no longer in progress.',
+        apiError('workout.cannotAddExercisesNotInProgress'),
       );
     }
     const exercise = await this.exerciseModel.findByPk(exerciseId, {
@@ -585,7 +578,7 @@ export class WorkoutLogService {
       !exercise ||
       (exercise.visibility === 'PRIVATE' && exercise.ownerId !== userId)
     ) {
-      throw new NotFoundException('Exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
     // Append at the end of the existing order.
     const last = await this.loggedExerciseModel.max('orderIndex', {
@@ -637,12 +630,12 @@ export class WorkoutLogService {
     const log = await this._loadOwnedLog(workoutLogId, userId);
     if (log.status !== WorkoutLogStatus.InProgress) {
       throw new BadRequestException(
-        'Cannot edit a workout that is no longer in progress.',
+        apiError('workout.cannotEditNotInProgress'),
       );
     }
     const ex = await this.loggedExerciseModel.findByPk(loggedExerciseId);
     if (!ex || ex.workoutLogId !== workoutLogId) {
-      throw new NotFoundException('Logged exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
     await ex.destroy();
   }
@@ -665,12 +658,12 @@ export class WorkoutLogService {
     const log = await this._loadOwnedLog(workoutLogId, userId);
     if (log.status !== WorkoutLogStatus.InProgress) {
       throw new BadRequestException(
-        'Cannot edit a workout that is no longer in progress.',
+        apiError('workout.cannotEditNotInProgress'),
       );
     }
     const ex = await this.loggedExerciseModel.findByPk(loggedExerciseId);
     if (!ex || ex.workoutLogId !== workoutLogId) {
-      throw new NotFoundException('Logged exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
     await ex.update({ isSkipped: skipped });
     return ex;
@@ -695,18 +688,16 @@ export class WorkoutLogService {
     const log = await this._loadOwnedLog(workoutLogId, userId);
     if (log.status !== WorkoutLogStatus.InProgress) {
       throw new BadRequestException(
-        'Cannot edit a workout that is no longer in progress.',
+        apiError('workout.cannotEditNotInProgress'),
       );
     }
 
     const ex = await this.loggedExerciseModel.findByPk(loggedExerciseId);
     if (!ex || ex.workoutLogId !== workoutLogId) {
-      throw new NotFoundException('Logged exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
     if (ex.exerciseId === newExerciseId) {
-      throw new BadRequestException(
-        'That is already the exercise being logged.',
-      );
+      throw new BadRequestException(apiError('workout.sameExerciseSwap'));
     }
 
     const next = await this.exerciseModel.findByPk(newExerciseId);
@@ -717,7 +708,7 @@ export class WorkoutLogService {
       (next.visibility === ExerciseVisibility.Private &&
         next.ownerId !== userId)
     ) {
-      throw new NotFoundException('Exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
 
     // Keep the ORIGINAL exercise as the provenance anchor across repeated
@@ -751,12 +742,12 @@ export class WorkoutLogService {
     const log = await this._loadOwnedLog(workoutLogId, userId);
     if (log.status !== WorkoutLogStatus.InProgress) {
       throw new BadRequestException(
-        'Cannot add sets to a workout that is no longer in progress.',
+        apiError('workout.cannotAddSetsNotInProgress'),
       );
     }
     const ex = await this.loggedExerciseModel.findByPk(loggedExerciseId);
     if (!ex || ex.workoutLogId !== workoutLogId) {
-      throw new NotFoundException('Logged exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
     const last = await this.loggedSetModel.max('orderIndex', {
       where: { loggedExerciseId },
@@ -815,9 +806,7 @@ export class WorkoutLogService {
   async discard(workoutLogId: string, userId: string): Promise<void> {
     const log = await this._loadOwnedLog(workoutLogId, userId);
     if (log.status !== WorkoutLogStatus.InProgress) {
-      throw new BadRequestException(
-        'Only a workout in progress can be cancelled. Finished workouts stay in your history.',
-      );
+      throw new BadRequestException(apiError('workout.cannotDiscardFinished'));
     }
 
     const { assignedWorkoutId, programAssignmentId, sourceProgramId } = log;
@@ -1402,7 +1391,7 @@ export class WorkoutLogService {
       ],
     });
     if (!log || log.userId !== userId) {
-      throw new NotFoundException('Workout log not found.');
+      throw new NotFoundException(apiError('workout.logNotFound'));
     }
     // Attach session PRs as a virtual property so the FE can render
     // the workout-complete trophy tile without a second hop. Sequelize
@@ -1437,7 +1426,7 @@ export class WorkoutLogService {
       },
       attributes: ['id'],
     });
-    if (!link) throw new NotFoundException('Client not found.');
+    if (!link) throw new NotFoundException(apiError('workout.clientNotFound'));
   }
 
   /**
@@ -1495,7 +1484,7 @@ export class WorkoutLogService {
     const stub = await this.logModel.findByPk(id, {
       attributes: ['userId', 'programAssignmentId'],
     });
-    if (!stub) throw new NotFoundException('Workout log not found.');
+    if (!stub) throw new NotFoundException(apiError('workout.logNotFound'));
     await this._assertActiveCoachOf(instructorId, stub.userId);
 
     // Same gate as the list: an off-plan session is the client's own
@@ -1507,7 +1496,7 @@ export class WorkoutLogService {
       visible !== null &&
       (!stub.programAssignmentId || !visible.includes(stub.programAssignmentId))
     ) {
-      throw new NotFoundException('Workout log not found.');
+      throw new NotFoundException(apiError('workout.logNotFound'));
     }
     return this.findById(id, stub.userId);
   }
@@ -1552,14 +1541,14 @@ export class WorkoutLogService {
       assignedWorkoutId,
       userId,
     );
-    if (!owned) throw new NotFoundException('Workout log not found.');
+    if (!owned) throw new NotFoundException(apiError('workout.logNotFound'));
 
     const log = await this.logModel.findOne({
       where: { userId, assignedWorkoutId },
       order: [['startedAt', 'DESC']],
       attributes: ['id'],
     });
-    if (!log) throw new NotFoundException('Workout log not found.');
+    if (!log) throw new NotFoundException(apiError('workout.logNotFound'));
     return log;
   }
 
@@ -1570,7 +1559,7 @@ export class WorkoutLogService {
   private async _loadOwnedLog(id: string, userId: string): Promise<WorkoutLog> {
     const log = await this.logModel.findByPk(id);
     if (!log || log.userId !== userId) {
-      throw new NotFoundException('Workout log not found.');
+      throw new NotFoundException(apiError('workout.logNotFound'));
     }
     return log;
   }

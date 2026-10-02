@@ -4,6 +4,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { UserService } from '../../user/user.service';
 import { RoleService } from '../../role/role.service';
+import { apiError } from '../../../common/i18n';
 import type { JwtPayload } from '../types/jwt-payload';
 
 @Injectable()
@@ -35,11 +36,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const user = await this.userService.findById(payload.sub);
 
     if (!user) {
-      throw new UnauthorizedException('User not found or has been deleted');
+      throw new UnauthorizedException(apiError('common.unauthorized'));
     }
 
     if (!user.isActive) {
-      throw new UnauthorizedException('User account is deactivated');
+      throw new UnauthorizedException(apiError('auth.accountDeactivated'));
     }
 
     // Reject tokens issued before the user changed their password.
@@ -48,9 +49,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         user.passwordChangedAt.getTime() / 1000,
       );
       if (payload.iat < passwordChangedAtSec) {
-        throw new UnauthorizedException(
-          'Password was changed. Please log in again.',
-        );
+        throw new UnauthorizedException(apiError('auth.passwordChanged'));
       }
     }
 

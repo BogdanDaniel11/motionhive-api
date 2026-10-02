@@ -17,6 +17,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { ApiEndpoint } from '../../common/decorators/api-response.decorator';
+import { apiError } from '../../common/i18n';
 import { DeviceDocs } from '../../common/docs/notification.docs';
 import type { AuthenticatedRequest } from '../../common/types/authenticated-request';
 import { DeviceTokenService } from './services/device-token.service';
@@ -56,9 +57,7 @@ export class DeviceController {
       dto.platform === DevicePlatform.WEB ? dto.subscription : dto.tokenString;
     if (!token) {
       throw new BadRequestException(
-        dto.platform === DevicePlatform.WEB
-          ? '`subscription` is required for platform=WEB'
-          : '`tokenString` is required for platform=IOS|ANDROID',
+        apiError('notification.deviceTokenMissing'),
       );
     }
     return this.devices.register({

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { promises as dns } from 'node:dns';
 import { DISPOSABLE_EMAIL_DOMAINS } from '../constants/disposable-email-domains';
+import { apiError } from '../i18n';
 
 /**
  * Why this exists
@@ -91,24 +92,20 @@ export class EmailVerifierService {
     const domain = this.extractDomain(email);
     if (!domain) {
       // Shouldn't happen — DTO validation runs first — but belt-and-braces.
-      throw new BadRequestException('Invalid email address.');
+      throw new BadRequestException(apiError('validation.invalidEmail'));
     }
 
     if (this.disposableDomains.has(domain)) {
       this.logger.warn(
         `Rejected signup: ${email} — reason: DISPOSABLE_DOMAIN (${domain})`,
       );
-      throw new BadRequestException(
-        "We can't accept temporary email addresses. Please use a personal or work email.",
-      );
+      throw new BadRequestException(apiError('common.disposableEmail'));
     }
 
     const hasMx = await this.domainHasMx(domain);
     if (!hasMx) {
       this.logger.warn(`Rejected signup: ${email} — reason: NO_MX (${domain})`);
-      throw new BadRequestException(
-        'This email address cannot receive mail (the domain has no mail server). Please check for typos.',
-      );
+      throw new BadRequestException(apiError('common.emailCannotReceive'));
     }
   }
 

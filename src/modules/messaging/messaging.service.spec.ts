@@ -20,6 +20,7 @@ import { ConversationParticipant } from './entities/conversation-participant.ent
 import { Message, MessageKind } from './entities/message.entity';
 import { User } from '../user/entities/user.entity';
 import { makeSilentLogger } from '../../../test/helpers/sequelize-mocks';
+import { apiError } from '../../common/i18n';
 
 // ---------------------------------------------------------------------------
 // Lightweight mocks. We stub only the Sequelize surface MessagingService
@@ -669,7 +670,7 @@ describe('MessagingService — Stage 2 core', () => {
     it('suspension → 403, no row written', async () => {
       safety.canMessage.mockResolvedValue({
         kind: 'forbidden',
-        reason: 'Your messaging has been restricted. Contact support.',
+        reason: apiError('messaging.suspended'),
       });
 
       await expect(
@@ -683,8 +684,7 @@ describe('MessagingService — Stage 2 core', () => {
     it('new-account rule → 403, no row written', async () => {
       safety.canMessage.mockResolvedValue({
         kind: 'forbidden',
-        reason:
-          'New accounts can only message users they already have an active relationship with.',
+        reason: apiError('messaging.newAccountLimited'),
       });
 
       await expect(

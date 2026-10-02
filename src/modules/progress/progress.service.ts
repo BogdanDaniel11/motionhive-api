@@ -5,6 +5,7 @@ import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { QueryTypes } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 
+import { apiError } from '../../common/i18n';
 import { Exercise } from '../exercise/entities/exercise.entity';
 import { ProgressRange } from './dto/progress-range.enum';
 import { RosterWindow } from './dto/roster.query.dto';
@@ -145,7 +146,7 @@ export class ProgressService {
     const exercise = await this.exerciseModel.findByPk(exerciseId, {
       attributes: ['id', 'name', 'slug', 'kind', 'thumbnailUrl'],
     });
-    if (!exercise) throw new NotFoundException('Exercise not found.');
+    if (!exercise) throw new NotFoundException(apiError('exercise.notFound'));
 
     const sessions = await this.sequelize.query<{
       workoutLogId: string;

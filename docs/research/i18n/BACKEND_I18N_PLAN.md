@@ -1,9 +1,10 @@
 # Backend i18n: notifications + emails in Romanian
 
-Status (2026-10-01): **done.** Notifications (phase 2) and every transactional email (phase 3)
-render in the reader's language, English or Romanian. The Romanian was checked by blind
+Status (2026-10-02): **done.** Notifications (phase 2), every transactional email (phase 3) and
+every error message the apps can show render in the reader's language, English or Romanian. The Romanian was checked by blind
 back-translation and fixed; the owner's review sheet is
-`motionhive-ro-notifications-review.xlsx` (tabs Notifications, Emails, Email frame). See "As built"
+`motionhive-ro-notifications-review.xlsx` (tabs Notifications, Emails, Error messages, Website,
+Email frame). See "As built"
 below; where it differs from the original "Design" section, "As built" wins.
 
 ## As built
@@ -91,6 +92,23 @@ as broken punctuation inside a sentence.
   the same samples to a real inbox (`--locale en|ro|both`, `--only <name>`).
 - Removed: the session cancelled / rescheduled / reminder / participant-status emails, which
   nothing called (the notification emails cover those events).
+
+### Error messages
+
+- A refusal is thrown as `throw new XxxException(apiError('<module>.<name>', params))`
+  (`src/common/i18n/api-error.ts`). The body carries the English rendering as `message` (logs,
+  tests and `exception.message` stay English) plus the key; the global
+  `HttpExceptionFilter` rewrites `message` in the caller's language. Copy lives in
+  `catalog/{en,ro}/errors/<module>.ts`; `common.ts` holds the generic ones.
+- The caller's language: the `Accept-Language` the apps send (core `languageInterceptor`), then
+  the signed-in user's `language`, then English.
+- A bare `new NotFoundException()` or a guard's 401/403 is answered with the matching
+  `errors.common.*` sentence. Extra body fields (`code`, `retryAfter`) pass through.
+- Validation: class-validator's own messages name DTO properties, so a failed rule answers with
+  `errors.common.invalidInput`, unless the DTO's `message` is a catalog key string
+  (`message: 'errors.validation.invalidEmail'`), which is used instead. The raw messages travel in
+  `details`.
+- Not translated on purpose: the admin module, and checks only Stripe or a developer can trigger.
 
 ### Decisions taken (were open)
 

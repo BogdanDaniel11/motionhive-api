@@ -11,7 +11,7 @@ import { EmailService } from '../../common/services';
 import { User } from '../user/entities/user.entity';
 import { SendFriendInviteDto } from './dto/send-friend-invite.dto';
 import { SuggestInstructorDto } from './dto/suggest-instructor.dto';
-import { toLocale } from '../../common/i18n';
+import { apiError, toLocale } from '../../common/i18n';
 
 /**
  * Lightweight "social" invitation flows used by the home page —
@@ -45,12 +45,12 @@ export class SocialInvitationService {
     });
     if (!inviter) {
       // Shouldn't happen — JWT guard ran upstream — but fail loud if it does.
-      throw new BadRequestException('Inviter not found.');
+      throw new BadRequestException(apiError('invitation.accountNotFound'));
     }
 
     const target = dto.email.trim().toLowerCase();
     if (target === inviter.email.toLowerCase()) {
-      throw new BadRequestException("You can't invite yourself.");
+      throw new BadRequestException(apiError('invitation.cannotInviteSelf'));
     }
 
     const inviterName =
@@ -79,12 +79,12 @@ export class SocialInvitationService {
       attributes: ['id', 'firstName', 'lastName', 'email', 'language'],
     });
     if (!recommender) {
-      throw new BadRequestException('Recommender not found.');
+      throw new BadRequestException(apiError('invitation.accountNotFound'));
     }
 
     const target = dto.email.trim().toLowerCase();
     if (target === recommender.email.toLowerCase()) {
-      throw new BadRequestException("You can't suggest yourself.");
+      throw new BadRequestException(apiError('invitation.cannotSuggestSelf'));
     }
 
     const recommenderName =

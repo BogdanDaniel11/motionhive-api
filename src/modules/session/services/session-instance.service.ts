@@ -13,6 +13,7 @@ import {
   getOffset,
   PaginatedResponse,
 } from '../../../common/dto/pagination.dto';
+import { apiError } from '../../../common/i18n';
 import { User } from '../../user/entities/user.entity';
 import { Venue } from '../../venue/entities/venue.entity';
 import { SessionInstance } from '../entities/session-instance.entity';
@@ -237,7 +238,7 @@ export class SessionInstanceService {
       ],
     });
     if (!instance) {
-      throw new NotFoundException('Session instance not found');
+      throw new NotFoundException(apiError('session.notFound'));
     }
 
     const access = await this.accessService.evaluate(
@@ -246,7 +247,7 @@ export class SessionInstanceService {
       callerId,
     );
     if (!access.canView) {
-      throw new NotFoundException('Session instance not found');
+      throw new NotFoundException(apiError('session.notFound'));
     }
 
     if (access.isOwner) {
@@ -293,7 +294,7 @@ export class SessionInstanceService {
       attributes: ['id'],
     });
     if (!instance) {
-      throw new NotFoundException('Session instance not found');
+      throw new NotFoundException(apiError('session.notFound'));
     }
 
     const page = query.page ?? 1;
@@ -343,15 +344,15 @@ export class SessionInstanceService {
       : new Date(now + DEFAULT_WINDOW_DAYS * 86_400_000);
 
     if (Number.isNaN(dateFrom.getTime()) || Number.isNaN(dateTo.getTime())) {
-      throw new BadRequestException('Invalid date range');
+      throw new BadRequestException(apiError('session.invalidDateRange'));
     }
     if (dateFrom >= dateTo) {
-      throw new BadRequestException('dateFrom must be before dateTo');
+      throw new BadRequestException(apiError('session.dateRangeOrder'));
     }
     const spanDays = (dateTo.getTime() - dateFrom.getTime()) / 86_400_000;
     if (spanDays > MAX_WINDOW_DAYS) {
       throw new BadRequestException(
-        `Date range too wide (max ${MAX_WINDOW_DAYS} days)`,
+        apiError('session.dateRangeTooWide', { days: MAX_WINDOW_DAYS }),
       );
     }
     return { dateFrom, dateTo };

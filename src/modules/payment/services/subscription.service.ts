@@ -25,6 +25,7 @@ import { ConfigService } from '@nestjs/config';
 import { StripeService } from './stripe.service';
 import { CustomerService } from './customer.service';
 import { EmailService } from '../../../common/services/email.service';
+import { apiError } from '../../../common/i18n';
 import { NotificationService } from '../../notification/notification.service';
 import { NotificationOutbox } from '../../notification/notification-outbox';
 import {
@@ -78,19 +79,19 @@ export class SubscriptionService {
     });
     if (!account?.chargesEnabled) {
       throw new UnprocessableEntityException(
-        'Complete Stripe onboarding before creating subscriptions.',
+        apiError('payment.setupRequiredForSubscriptions'),
       );
     }
 
     const product = await this.productModel.findByPk(dto.productId);
     if (!product || product.instructorId !== instructorId) {
-      throw new NotFoundException('Product not found.');
+      throw new NotFoundException(apiError('payment.productNotFound'));
     }
     if (product.type !== ProductType.SUBSCRIPTION) {
-      throw new BadRequestException('Product must be of type SUBSCRIPTION.');
+      throw new BadRequestException(apiError('payment.productNotSubscription'));
     }
     if (!product.stripePriceId) {
-      throw new BadRequestException('Product has no Stripe Price linked.');
+      throw new BadRequestException(apiError('payment.productNotLinked'));
     }
 
     // Reject obvious duplicates with a friendly message before we
@@ -113,10 +114,7 @@ export class SubscriptionService {
       },
     });
     if (existing) {
-      throw new ConflictException(
-        'This client already has an active subscription to this plan. ' +
-          'Cancel it first, or pick another plan.',
-      );
+      throw new ConflictException(apiError('payment.subscriptionExists'));
     }
 
     // Two-phase save: insert the local row, commit, then call Stripe
@@ -446,9 +444,7 @@ export class SubscriptionService {
    */
   private assertStripeId(sub: Subscription): string {
     if (!sub.stripeSubscriptionId) {
-      throw new BadRequestException(
-        'Subscription is incomplete (Stripe link missing). Recreate it.',
-      );
+      throw new BadRequestException(apiError('payment.subscriptionNotLinked'));
     }
     return sub.stripeSubscriptionId;
   }
@@ -507,9 +503,11 @@ export class SubscriptionService {
         },
       ],
     });
-    if (!sub) throw new NotFoundException('Subscription not found.');
+    if (!sub) {
+      throw new NotFoundException(apiError('payment.subscriptionNotFound'));
+    }
     if (sub.instructorId !== instructorId) {
-      throw new ForbiddenException('You do not own this subscription.');
+      throw new ForbiddenException(apiError('payment.subscriptionNotYours'));
     }
     return sub;
   }
@@ -600,9 +598,11 @@ export class SubscriptionService {
     const sub = await this.subscriptionModel.findByPk(subscriptionId, {
       include: [{ model: Product, attributes: ['id', 'name'] }],
     });
-    if (!sub) throw new NotFoundException('Subscription not found.');
+    if (!sub) {
+      throw new NotFoundException(apiError('payment.subscriptionNotFound'));
+    }
     if (sub.instructorId !== instructorId) {
-      throw new ForbiddenException('You do not own this subscription.');
+      throw new ForbiddenException(apiError('payment.subscriptionNotYours'));
     }
     if (sub.status === SubscriptionStatus.CANCELED) {
       return sub;
@@ -675,9 +675,11 @@ export class SubscriptionService {
         },
       ],
     });
-    if (!sub) throw new NotFoundException('Subscription not found.');
+    if (!sub) {
+      throw new NotFoundException(apiError('payment.subscriptionNotFound'));
+    }
     if (sub.clientId !== clientId) {
-      throw new ForbiddenException('You do not own this subscription.');
+      throw new ForbiddenException(apiError('payment.subscriptionNotYours'));
     }
     if (sub.status === SubscriptionStatus.CANCELED) {
       return sub;

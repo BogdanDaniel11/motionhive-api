@@ -169,7 +169,7 @@ describe('ExerciseService (smoke — not exhaustive)', () => {
           },
           'owner-1',
         ),
-      ).rejects.toThrow(/PRIMARY muscles/);
+      ).rejects.toThrow(/primary muscles/);
     });
 
     it('rejects duplicate (muscle, role) pairs', async () => {
@@ -184,7 +184,7 @@ describe('ExerciseService (smoke — not exhaustive)', () => {
           },
           'owner-1',
         ),
-      ).rejects.toThrow(/Duplicate/);
+      ).rejects.toThrow(/listed twice/);
     });
   });
 

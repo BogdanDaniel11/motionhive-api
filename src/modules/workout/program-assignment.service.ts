@@ -11,6 +11,7 @@ import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { Op, Transaction } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 
+import { apiError } from '../../common/i18n';
 import { escapeLikeWildcards } from '../../common/utils/search.utils';
 
 import {
@@ -151,10 +152,10 @@ export class ProgramAssignmentService {
       program.source === ProgramSource.System &&
       program.status === ProgramStatus.Published;
     if (!program || (!isOwnedByCaller && !isSystemStarter)) {
-      throw new NotFoundException('Program not found.');
+      throw new NotFoundException(apiError('workout.programNotFound'));
     }
     if (program.deletedAt) {
-      throw new BadRequestException('Cannot assign a deleted program.');
+      throw new BadRequestException(apiError('workout.cannotAssignDeleted'));
     }
 
     // The client must be in an ACTIVE instructor↔client relationship.
@@ -166,9 +167,7 @@ export class ProgramAssignmentService {
       },
     });
     if (!relationship) {
-      throw new ForbiddenException(
-        'You can only assign programs to your active clients.',
-      );
+      throw new ForbiddenException(apiError('workout.assignActiveClientsOnly'));
     }
 
     // Pull the client display name for the notification (we already
@@ -177,7 +176,7 @@ export class ProgramAssignmentService {
       attributes: ['id', 'firstName', 'lastName'],
     });
     if (!client) {
-      throw new NotFoundException('Client not found.');
+      throw new NotFoundException(apiError('workout.clientNotFound'));
     }
 
     // Resolved before the transaction opens: a day-count mismatch is a bad
@@ -375,10 +374,10 @@ export class ProgramAssignmentService {
       ],
     });
     if (!assignment) {
-      throw new NotFoundException('Assignment not found.');
+      throw new NotFoundException(apiError('workout.assignmentNotFound'));
     }
     if (assignment.instructorId !== userId && assignment.clientId !== userId) {
-      throw new NotFoundException('Assignment not found.');
+      throw new NotFoundException(apiError('workout.assignmentNotFound'));
     }
     return assignment;
   }
@@ -462,20 +461,18 @@ export class ProgramAssignmentService {
 
     // Own it or it doesn't exist, same hide-existence rule as elsewhere.
     if (!program || program.ownerId !== userId) {
-      throw new NotFoundException('Routine not found.');
+      throw new NotFoundException(apiError('workout.routineNotFound'));
     }
     const source = program.workouts?.[0];
     if (!source) {
       throw new BadRequestException(
-        'This routine has no exercises yet, so there is nothing to schedule.',
+        apiError('workout.routineNothingToSchedule'),
       );
     }
 
     const repeatMode = dto.repeatMode ?? ProgramRepeatMode.Weekly;
     if (repeatMode === ProgramRepeatMode.Block && !dto.repeatWeeks) {
-      throw new BadRequestException(
-        'A block schedule needs to know how many weeks it runs for.',
-      );
+      throw new BadRequestException(apiError('workout.blockNeedsWeeks'));
     }
 
     const startDate = dto.startDate ?? today;
@@ -724,12 +721,10 @@ export class ProgramAssignmentService {
       ],
     });
     if (!aw || !aw.assignment || aw.assignment.clientId !== clientId) {
-      throw new NotFoundException('Workout not found.');
+      throw new NotFoundException(apiError('workout.workoutNotFound'));
     }
     if (aw.status === WorkoutLogStatus.Completed) {
-      throw new BadRequestException(
-        "This workout is already complete and can't be skipped.",
-      );
+      throw new BadRequestException(apiError('workout.cannotSkipCompleted'));
     }
     await aw.update({ status: WorkoutLogStatus.Skipped });
     // Bump completion% so the plan progress reflects the skip. SKIPPED
@@ -1039,7 +1034,7 @@ export class ProgramAssignmentService {
   ): Promise<ProgramAssignment> {
     const assignment = await this.assignmentModel.findByPk(id);
     if (!assignment || assignment.instructorId !== instructorId) {
-      throw new NotFoundException('Assignment not found.');
+      throw new NotFoundException(apiError('workout.assignmentNotFound'));
     }
     return assignment;
   }
@@ -1097,9 +1092,7 @@ export class ProgramAssignmentService {
 
     if (chosen.length !== programDays.length) {
       throw new BadRequestException(
-        `This program trains on ${programDays.length} ${
-          programDays.length === 1 ? 'day' : 'days'
-        } a week. Pick exactly that many.`,
+        apiError('workout.pickTrainingDays', { count: programDays.length }),
       );
     }
 
@@ -1156,7 +1149,7 @@ export class ProgramAssignmentService {
     ];
     if (terminal.includes(current)) {
       throw new BadRequestException(
-        `Cannot transition out of a ${current} assignment.`,
+        apiError('workout.assignmentClosed', { status: current }),
       );
     }
   }

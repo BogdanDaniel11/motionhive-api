@@ -8,7 +8,7 @@ import { Sequelize } from 'sequelize-typescript';
 import { StripeCustomer } from '../entities/stripe-customer.entity';
 import { User } from '../../user/entities/user.entity';
 import { StripeService } from './stripe.service';
-import { Locale, toLocale } from '../../../common/i18n';
+import { Locale, apiError, toLocale } from '../../../common/i18n';
 
 /**
  * CustomerService — owns the platform-account `stripe_customer` row.
@@ -51,7 +51,7 @@ export class CustomerService {
 
     const user = await this.userModel.findByPk(userId, { transaction: tx });
     if (!user) {
-      throw new NotFoundException(`User ${userId} not found`);
+      throw new NotFoundException(apiError('payment.userNotFound'));
     }
 
     const stripeCustomer = await this.stripeService.stripe.customers.create(

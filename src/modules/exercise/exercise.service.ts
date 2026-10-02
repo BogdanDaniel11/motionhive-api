@@ -10,6 +10,7 @@ import { InjectModel } from '@nestjs/sequelize';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { Op, QueryTypes, Transaction, WhereOptions, literal } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
+import { apiError } from '../../common/i18n';
 import { assertOwned } from '../../common/utils/ownership.utils';
 import {
   buildPaginatedResponse,
@@ -165,11 +166,11 @@ export class ExerciseService {
     });
 
     if (!exercise) {
-      throw new NotFoundException('Exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
 
     if (!this.canRead(exercise, principal)) {
-      throw new NotFoundException('Exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
 
     return exercise;
@@ -238,11 +239,11 @@ export class ExerciseService {
     // We still gate via assertOwned for any future custom rows with NULL
     // owner_id (none today, but the check is the single source of truth).
     assertOwned(exercise, principal.userId, (e) => e.ownerId, {
-      notFoundMessage: 'Exercise not found.',
+      notFoundMessage: apiError('exercise.notFound'),
       onMismatch: 'hide',
     });
     if (exercise.source === ExerciseSource.System) {
-      throw new NotFoundException('Exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
 
     if (dto.muscles) {
@@ -316,11 +317,11 @@ export class ExerciseService {
   async softDelete(id: string, principal: PrincipalContext): Promise<void> {
     const exercise = await this.exerciseModel.findByPk(id);
     assertOwned(exercise, principal.userId, (e) => e.ownerId, {
-      notFoundMessage: 'Exercise not found.',
+      notFoundMessage: apiError('exercise.notFound'),
       onMismatch: 'hide',
     });
     if (exercise.source === ExerciseSource.System) {
-      throw new NotFoundException('Exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
 
     // Hard-delete is blocked by ON DELETE RESTRICT on prescribed/assigned/
@@ -359,17 +360,15 @@ export class ExerciseService {
     });
 
     if (!source) {
-      throw new NotFoundException('Exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
     if (source.visibility !== ExerciseVisibility.Public) {
       // Hide existence — a public exercise was made private after
       // someone tapped Fork; don't leak that it still exists.
-      throw new NotFoundException('Exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
     if (source.ownerId === principal.userId) {
-      throw new BadRequestException(
-        'You cannot fork your own exercise. Use Duplicate instead.',
-      );
+      throw new BadRequestException(apiError('exercise.cannotForkOwn'));
     }
 
     // Locked decision §17 anti-spam: one live fork per (owner, source).
@@ -384,9 +383,7 @@ export class ExerciseService {
       attributes: ['id'],
     });
     if (existingFork) {
-      throw new ConflictException(
-        'You already have a fork of this exercise in your library.',
-      );
+      throw new ConflictException(apiError('exercise.alreadyForked'));
     }
 
     const slug = await this.allocateSlug(source.name, principal.userId);
@@ -747,20 +744,20 @@ export class ExerciseService {
   ): void {
     const primaries = muscles.filter((m) => m.role === MuscleRole.Primary);
     if (primaries.length === 0) {
-      throw new BadRequestException('At least one PRIMARY muscle is required.');
+      throw new BadRequestException(apiError('exercise.primaryMuscleRequired'));
     }
     if (primaries.length > MAX_PRIMARY_MUSCLES) {
       throw new BadRequestException(
-        `Too many PRIMARY muscles (max ${MAX_PRIMARY_MUSCLES}).`,
+        apiError('exercise.tooManyPrimaryMuscles', {
+          max: MAX_PRIMARY_MUSCLES,
+        }),
       );
     }
     const seen = new Set<string>();
     for (const m of muscles) {
       const key = `${m.muscleId}:${m.role}`;
       if (seen.has(key)) {
-        throw new BadRequestException(
-          'Duplicate muscle/role row in the input.',
-        );
+        throw new BadRequestException(apiError('exercise.duplicateMuscle'));
       }
       seen.add(key);
     }
@@ -826,7 +823,7 @@ export class ExerciseService {
       });
       if (!conflict) return candidate;
     }
-    throw new BadRequestException('Could not allocate a unique slug.');
+    throw new BadRequestException(apiError('exercise.tooManyWithName'));
   }
 
   private async reloadDetail(id: string): Promise<Exercise> {
@@ -835,7 +832,7 @@ export class ExerciseService {
     });
     if (!reloaded) {
       // Should not happen — we just wrote it. Surface as 500 via a generic throw.
-      throw new NotFoundException('Exercise not found after write.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
     return reloaded;
   }

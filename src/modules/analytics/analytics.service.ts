@@ -16,6 +16,7 @@ import { GroupMember } from '../group/entities/group-member.entity';
 import { InstructorClient } from '../client/entities/instructor-client.entity';
 import { User } from '../user/entities/user.entity';
 import { InstructorProfile } from '../profile/entities/instructor-profile.entity';
+import { apiError } from '../../common/i18n';
 
 @Injectable()
 export class AnalyticsService {
@@ -43,7 +44,7 @@ export class AnalyticsService {
       where: { userId: instructorId },
     });
     if (!profile) {
-      throw new ForbiddenException('You are not an instructor');
+      throw new ForbiddenException(apiError('analytics.coachesOnly'));
     }
 
     const thirtyDaysAgo = new Date();

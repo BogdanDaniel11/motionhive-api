@@ -55,7 +55,7 @@ export class UpdateUserDto {
   @ValidateIf((_, value) => value !== null)
   @IsString()
   @Matches(/^\+[1-9]\d{6,14}$/, {
-    message: 'phone must be in E.164 format, e.g. +40712345678',
+    message: 'errors.validation.invalidPhone',
   })
   phone?: string | null;
 

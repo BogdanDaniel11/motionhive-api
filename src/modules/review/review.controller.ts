@@ -7,6 +7,7 @@ import { ReviewDocs } from '../../common/docs/review.docs';
 import { InjectModel } from '@nestjs/sequelize';
 import { InstructorProfile } from '../profile/entities/instructor-profile.entity';
 import { NotFoundException } from '@nestjs/common';
+import { apiError } from '../../common/i18n';
 
 /**
  * Mounts under `/profile/instructors/:id/reviews`. Public — no guards.
@@ -36,7 +37,7 @@ export class ReviewController {
       attributes: ['id'],
     });
     if (!profile) {
-      throw new NotFoundException('Instructor profile not found');
+      throw new NotFoundException(apiError('review.coachNotFound'));
     }
     return this.reviewService.listForInstructor(profile.id, dto);
   }

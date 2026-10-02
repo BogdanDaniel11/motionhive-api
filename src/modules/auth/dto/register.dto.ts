@@ -23,7 +23,7 @@ export class RegisterDto {
     example: 'user@example.com',
     description: 'User email address (must be unique)',
   })
-  @IsEmail()
+  @IsEmail({}, { message: 'errors.validation.invalidEmail' })
   @IsNotEmpty()
   email: string;
 
@@ -44,7 +44,9 @@ export class RegisterDto {
   })
   @IsString()
   @IsNotEmpty()
-  @Match('password', { message: 'Passwords do not match' })
+  @Match('password', {
+    message: 'errors.validation.passwordsDoNotMatch',
+  })
   confirmPassword: string;
 
   @ApiProperty({

@@ -33,6 +33,7 @@ import { MessagingVelocityService } from './messaging-velocity.service';
 import { NotificationService } from '../notification/notification.service';
 import { messageReceived } from './notifications';
 import { DELETED_MESSAGE_BODY, directKeyFor } from './constants';
+import { apiError } from '../../common/i18n';
 
 // ---------------------------------------------------------------------------
 // Public-facing shapes returned by the service. Plain JSON, ready for the
@@ -186,7 +187,7 @@ export class MessagingService {
     rawBody: string,
   ): Promise<SendMessageResult> {
     if (senderId === recipientId) {
-      throw new BadRequestException('Cannot send a message to yourself.');
+      throw new BadRequestException(apiError('messaging.cannotMessageSelf'));
     }
 
     // ── Rate limit FIRST ────────────────────────────────────────────
@@ -198,7 +199,7 @@ export class MessagingService {
 
     const trimmed = rawBody.trim();
     if (trimmed.length === 0) {
-      throw new BadRequestException('Message body cannot be empty.');
+      throw new BadRequestException(apiError('messaging.emptyMessage'));
     }
 
     // Load both sides up front. Sender → for the after-commit
@@ -341,7 +342,7 @@ export class MessagingService {
     if (!self) {
       // Should never happen — the sender's participant row was written
       // together with the conversation.
-      throw new NotFoundException('Conversation state vanished after send.');
+      throw new NotFoundException(apiError('messaging.conversationNotFound'));
     }
     // v1 is DIRECT-only, so "the other side" is the one non-sender row.
     const other = participants.find((p) => p.userId !== senderId) ?? null;
@@ -554,7 +555,7 @@ export class MessagingService {
     if (!item) {
       // We just asserted participation — but if the conversation was
       // hard-deleted between the two queries, 404.
-      throw new NotFoundException('Conversation not found.');
+      throw new NotFoundException(apiError('messaging.conversationNotFound'));
     }
     return item;
   }
@@ -580,7 +581,7 @@ export class MessagingService {
       });
       if (!beforeMessage) {
         throw new BadRequestException(
-          'Cursor message not found in conversation.',
+          apiError('messaging.cannotLoadOlderMessages'),
         );
       }
       where.createdAt = { [Op.lt]: beforeMessage.createdAt };
@@ -619,7 +620,7 @@ export class MessagingService {
       ],
     });
     if (!message) {
-      throw new NotFoundException('Message not found.');
+      throw new NotFoundException(apiError('messaging.messageNotFound'));
     }
     // assertParticipant 404s if the user isn't in the conversation —
     // same shape as the message-not-found path. No leak.
@@ -672,7 +673,7 @@ export class MessagingService {
     const now = new Date();
     let upTo = upToIso ? new Date(upToIso) : now;
     if (Number.isNaN(upTo.getTime())) {
-      throw new BadRequestException('upToIso is not a valid ISO timestamp.');
+      throw new BadRequestException(apiError('messaging.invalidDate'));
     }
     // Clamp to "now" — a client supplying a future timestamp would
     // prematurely mark messages-not-yet-received as read.
@@ -722,7 +723,7 @@ export class MessagingService {
     if (untilIso) {
       const parsed = new Date(untilIso);
       if (Number.isNaN(parsed.getTime())) {
-        throw new BadRequestException('untilIso is not a valid ISO timestamp.');
+        throw new BadRequestException(apiError('messaging.invalidDate'));
       }
       // Past timestamp = treat as unmute (defensive).
       mutedUntil = parsed.getTime() > Date.now() ? parsed : null;
@@ -756,13 +757,11 @@ export class MessagingService {
       attributes: ['id', 'type'],
     });
     if (!conversation) {
-      throw new NotFoundException('Conversation not found.');
+      throw new NotFoundException(apiError('messaging.conversationNotFound'));
     }
 
     if (conversation.type === ConversationType.DIRECT) {
-      throw new BadRequestException(
-        'Cannot leave a direct conversation. Block the other user instead.',
-      );
+      throw new BadRequestException(apiError('messaging.cannotLeaveDirect'));
     }
 
     await this.participantModel.update(
@@ -782,10 +781,12 @@ export class MessagingService {
   ): Promise<MessageView> {
     const message = await this.messageModel.findByPk(messageId);
     if (!message) {
-      throw new NotFoundException('Message not found.');
+      throw new NotFoundException(apiError('messaging.messageNotFound'));
     }
     if (message.senderId !== userId) {
-      throw new ForbiddenException('You can only delete your own messages.');
+      throw new ForbiddenException(
+        apiError('messaging.cannotDeleteOthersMessage'),
+      );
     }
     if (message.deletedAt) {
       return this.toMessageView(message);

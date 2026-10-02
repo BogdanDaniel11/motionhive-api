@@ -228,7 +228,7 @@ Full schema in `src/config/env.validation.ts` (Joi, `abortEarly: false`).
 - DB columns: snake_case (auto via `underscored: true`)
 - Nullable Sequelize fields need `| null` in the type (never `as any`)
 - Controllers are thin — business logic in services
-- Errors: NestJS built-in exceptions (`NotFoundException`, `ConflictException`, etc.)
+- Errors: NestJS built-in exceptions with a catalog message: `throw new ConflictException(apiError('<module>.<name>', params))`, never a literal English string (the global filter translates it for the caller). Add the sentence to `common/i18n/catalog/{en,ro}/errors/<module>.ts`. DTO messages a person can hit are catalog key strings (`message: 'errors.validation.<name>'`)
 - **Always use transactions** for multi-table operations (pass `{ transaction }` to every ORM call)
 - **Use `Op.iLike`** (not `Op.like`) for search on PostgreSQL, and escape the term with `escapeLikeWildcards` (common/utils/search.utils) — an unescaped `%` matches every row
 - **Use PostgreSQL JSON operators** (`@>`, `?`, `->`) — never MySQL functions (`JSON_CONTAINS`)

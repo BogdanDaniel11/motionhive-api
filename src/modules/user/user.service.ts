@@ -26,6 +26,7 @@ import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CryptoService } from '../../common/services';
+import { apiError } from '../../common/i18n';
 import { CloudinaryService } from '../../common/services/cloudinary.service';
 import { InstructorProfile } from '../profile/entities/instructor-profile.entity';
 import { GroupMember } from '../group/entities/group-member.entity';
@@ -316,7 +317,7 @@ export class UserService {
     // Check if user already exists (do this BEFORE expensive bcrypt operation)
     const existingUser = await this.findByEmail(userData.email);
     if (existingUser) {
-      throw new ConflictException('User with this email already exists');
+      throw new ConflictException(apiError('user.emailTaken'));
     }
 
     // 12 rounds: balance between attack cost and signup latency.
@@ -391,9 +392,7 @@ export class UserService {
       // if their email is already verified (proves ownership).
       // Otherwise, reject to prevent OAuth account takeover.
       if (existingUser.passwordHash && !existingUser.isEmailVerified) {
-        throw new ConflictException(
-          'An account with this email already exists. Please log in with your password and verify your email before linking a social account.',
-        );
+        throw new ConflictException(apiError('user.verifyBeforeLinking'));
       }
 
       await this.linkSocialAccountIdempotent(
@@ -507,7 +506,7 @@ export class UserService {
   ): Promise<User> {
     const existingUser = await this.findByEmail(profile.email);
     if (existingUser) {
-      throw new ConflictException('User with this email already exists');
+      throw new ConflictException(apiError('user.emailTaken'));
     }
     const handle = await this.generateHandle(
       profile.firstName,
@@ -547,7 +546,7 @@ export class UserService {
   ): Promise<User> {
     const user = await this.userModel.findByPk(userId, { transaction });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException(apiError('user.notFound'));
     }
 
     // Lock countryCode once a Stripe Connect account exists. Stripe does
@@ -564,10 +563,7 @@ export class UserService {
         },
       );
       if (row) {
-        throw new BadRequestException(
-          'Country cannot be changed once payments are set up. ' +
-            'Contact support to migrate your Stripe account.',
-        );
+        throw new BadRequestException(apiError('user.countryLocked'));
       }
     }
 
@@ -603,7 +599,7 @@ export class UserService {
   async uploadAvatar(userId: string, file: Express.Multer.File): Promise<User> {
     const user = await this.findById(userId);
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException(apiError('user.notFound'));
     }
 
     const previousPublicId = user.avatarPublicId;
@@ -649,7 +645,7 @@ export class UserService {
   async deleteAccount(userId: string): Promise<void> {
     const user = await this.findById(userId);
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException(apiError('user.notFound'));
     }
     user.isActive = false;
     await user.save();
@@ -693,7 +689,7 @@ export class UserService {
     });
 
     if (!user) {
-      throw new ConflictException('User not found');
+      throw new ConflictException(apiError('user.notFound'));
     }
 
     const [

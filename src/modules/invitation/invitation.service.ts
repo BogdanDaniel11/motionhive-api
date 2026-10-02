@@ -26,7 +26,7 @@ import {
   groupInvitationAccepted,
   groupInvitationDeclined,
 } from '../group/notifications';
-import { toLocale } from '../../common/i18n';
+import { apiError, toLocale } from '../../common/i18n';
 import type { Locale } from '../../common/i18n';
 
 /**
@@ -88,9 +88,7 @@ export class InvitationService {
     });
 
     if (existingMember) {
-      throw new BadRequestException(
-        'This user is already a member of the group',
-      );
+      throw new BadRequestException(apiError('invitation.alreadyMember'));
     }
 
     // Find the role to assign
@@ -108,9 +106,7 @@ export class InvitationService {
     });
 
     if (existing && existing.expiresAt > new Date()) {
-      throw new BadRequestException(
-        'An active invitation already exists for this email',
-      );
+      throw new BadRequestException(apiError('invitation.alreadyInvited'));
     }
 
     // Generate token — hash it for storage, keep plain for the link
@@ -218,26 +214,24 @@ export class InvitationService {
     });
 
     if (!invitation) {
-      throw new NotFoundException('Invitation not found');
+      throw new NotFoundException(apiError('invitation.notFound'));
     }
 
     if (invitation.acceptedAt) {
-      throw new BadRequestException('Invitation has already been accepted');
+      throw new BadRequestException(apiError('invitation.alreadyAccepted'));
     }
 
     if (invitation.declinedAt) {
-      throw new BadRequestException('Invitation has been declined');
+      throw new BadRequestException(apiError('invitation.declined'));
     }
 
     if (invitation.expiresAt < new Date()) {
-      throw new BadRequestException('Invitation has expired');
+      throw new BadRequestException(apiError('invitation.expired'));
     }
 
     // Verify the accepting user's email matches the invitation email
     if (invitation.email.toLowerCase() !== userEmail.toLowerCase()) {
-      throw new ForbiddenException(
-        'This invitation was sent to a different email address',
-      );
+      throw new ForbiddenException(apiError('invitation.wrongEmail'));
     }
 
     // Wrap in transaction: addMember + assignRole + markAccepted must all succeed or all fail
@@ -342,18 +336,16 @@ export class InvitationService {
     });
 
     if (!invitation) {
-      throw new NotFoundException('Invitation not found');
+      throw new NotFoundException(apiError('invitation.notFound'));
     }
 
     if (invitation.acceptedAt || invitation.declinedAt) {
-      throw new BadRequestException('Invitation has already been responded to');
+      throw new BadRequestException(apiError('invitation.alreadyAnswered'));
     }
 
     // Verify the declining user's email matches the invitation
     if (invitation.email.toLowerCase() !== userEmail.toLowerCase()) {
-      throw new ForbiddenException(
-        'This invitation was sent to a different email address',
-      );
+      throw new ForbiddenException(apiError('invitation.wrongEmail'));
     }
 
     await invitation.update({ declinedAt: new Date() });
@@ -436,7 +428,7 @@ export class InvitationService {
     const invitation = await this.invitationModel.findByPk(invitationId);
 
     if (!invitation) {
-      throw new NotFoundException('Invitation not found');
+      throw new NotFoundException(apiError('invitation.notFound'));
     }
 
     // Verify the user is the group owner
@@ -444,7 +436,7 @@ export class InvitationService {
 
     if (invitation.acceptedAt) {
       throw new BadRequestException(
-        'Cannot cancel an already accepted invitation',
+        apiError('invitation.cannotCancelAccepted'),
       );
     }
 
@@ -473,7 +465,7 @@ export class InvitationService {
     });
 
     if (!invitation) {
-      throw new NotFoundException('Invitation not found');
+      throw new NotFoundException(apiError('invitation.notFound'));
     }
 
     // Verify the user is the group owner
@@ -481,7 +473,7 @@ export class InvitationService {
 
     if (invitation.acceptedAt) {
       throw new BadRequestException(
-        'Cannot resend an already accepted invitation',
+        apiError('invitation.cannotResendAccepted'),
       );
     }
 

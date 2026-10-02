@@ -43,7 +43,7 @@ import {
   InstructorClient,
   InstructorClientStatus,
 } from './entities/instructor-client.entity';
-import { toLocale } from '../../common/i18n';
+import { apiError, toLocale } from '../../common/i18n';
 
 // ---------------------------------------------------------------------------
 // Local shape types for getMyClients / enrichWithGroupMemberships
@@ -675,7 +675,7 @@ export class ClientService {
       return { message: 'Invitation sent to existing user', request };
     }
     if (!dto.email) {
-      throw new BadRequestException('Provide either userId or email.');
+      throw new BadRequestException(apiError('client.inviteTargetRequired'));
     }
     return this.sendClientInvitationByEmail(
       instructorId,
@@ -704,9 +704,7 @@ export class ClientService {
       'INSTRUCTOR',
     );
     if (!hasInstructorRole) {
-      throw new ForbiddenException(
-        'You must have the INSTRUCTOR role to invite clients',
-      );
+      throw new ForbiddenException(apiError('client.coachesOnly'));
     }
 
     // Cannot invite yourself
@@ -714,7 +712,7 @@ export class ClientService {
       attributes: ['id', 'email', 'firstName', 'lastName', 'language'],
     });
     if (instructor && instructor.email.toLowerCase() === normalizedEmail) {
-      throw new BadRequestException('You cannot invite yourself as a client');
+      throw new BadRequestException(apiError('client.cannotInviteSelf'));
     }
 
     // Check if user exists
@@ -745,9 +743,7 @@ export class ClientService {
     });
 
     if (existingRequest) {
-      throw new ConflictException(
-        'A pending invitation already exists for this email',
-      );
+      throw new ConflictException(apiError('client.invitationAlreadyPending'));
     }
 
     const expiresAt = new Date();
@@ -819,9 +815,7 @@ export class ClientService {
       'INSTRUCTOR',
     );
     if (!hasInstructorRole) {
-      throw new ForbiddenException(
-        'You must have the INSTRUCTOR role to invite clients',
-      );
+      throw new ForbiddenException(apiError('client.coachesOnly'));
     }
 
     // Verify target user exists
@@ -829,16 +823,16 @@ export class ClientService {
       attributes: ['id', 'email', 'firstName', 'language'],
     });
     if (!targetUser) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException(apiError('client.userNotFound'));
     }
 
     // Cannot invite yourself
     if (instructorId === toUserId) {
-      throw new BadRequestException('You cannot invite yourself as a client');
+      throw new BadRequestException(apiError('client.cannotInviteSelf'));
     }
 
     // Check no existing active relationship
-    await this.assertNoActiveRelationship(instructorId, toUserId);
+    await this.assertNoActiveRelationship(instructorId, toUserId, 'instructor');
 
     // Check no pending request already exists between these two users
     await this.assertNoPendingRequest(instructorId, toUserId);
@@ -855,7 +849,7 @@ export class ClientService {
       });
 
       if (existing) {
-        throw new BadRequestException('This user is already your client');
+        throw new BadRequestException(apiError('client.alreadyYourClient'));
         //   await existing.update(
         //     {
         //       status: InstructorClientStatus.PENDING,
@@ -960,12 +954,12 @@ export class ClientService {
       attributes: ['id', 'firstName', 'lastName'],
     });
     if (!instructor) {
-      throw new NotFoundException('Instructor not found');
+      throw new NotFoundException(apiError('client.coachNotFound'));
     }
 
     // Cannot request yourself
     if (userId === instructorId) {
-      throw new BadRequestException('You cannot request to be your own client');
+      throw new BadRequestException(apiError('client.cannotRequestSelf'));
     }
 
     // Verify the target has the INSTRUCTOR role
@@ -974,7 +968,7 @@ export class ClientService {
       'INSTRUCTOR',
     );
     if (!hasInstructorRole) {
-      throw new BadRequestException('The specified user is not an instructor');
+      throw new BadRequestException(apiError('client.notACoach'));
     }
 
     // Check instructor is accepting clients
@@ -984,13 +978,11 @@ export class ClientService {
     });
 
     if (profile && !profile.getDataValue('isAcceptingClients')) {
-      throw new BadRequestException(
-        'This instructor is not currently accepting new clients',
-      );
+      throw new BadRequestException(apiError('client.notAcceptingClients'));
     }
 
     // Check no existing active relationship
-    await this.assertNoActiveRelationship(instructorId, userId);
+    await this.assertNoActiveRelationship(instructorId, userId, 'client');
 
     // Check no pending request
     await this.assertNoPendingRequest(instructorId, userId);
@@ -1070,18 +1062,20 @@ export class ClientService {
 
     // Verify the current user is the recipient
     if (request.toUserId !== userId) {
-      throw new ForbiddenException('You can only accept requests sent to you');
+      throw new ForbiddenException(
+        apiError('client.cannotAcceptOthersRequest'),
+      );
     }
 
     // Check not expired
     if (request.expiresAt < new Date()) {
-      throw new BadRequestException('This request has expired');
+      throw new BadRequestException(apiError('client.requestExpired'));
     }
 
     // Check not already responded
     if (request.status !== ClientRequestStatus.PENDING) {
       throw new BadRequestException(
-        `This request has already been ${request.status.toLowerCase()}`,
+        apiError('client.requestAlreadyAnswered', { status: request.status }),
       );
     }
 
@@ -1215,12 +1209,14 @@ export class ClientService {
 
     // Verify the current user is the recipient
     if (request.toUserId !== userId) {
-      throw new ForbiddenException('You can only decline requests sent to you');
+      throw new ForbiddenException(
+        apiError('client.cannotDeclineOthersRequest'),
+      );
     }
 
     if (request.status !== ClientRequestStatus.PENDING) {
       throw new BadRequestException(
-        `This request has already been ${request.status.toLowerCase()}`,
+        apiError('client.requestAlreadyAnswered', { status: request.status }),
       );
     }
 
@@ -1321,12 +1317,14 @@ export class ClientService {
 
     // Verify the current user is the sender
     if (request.fromUserId !== userId) {
-      throw new ForbiddenException('You can only cancel requests you sent');
+      throw new ForbiddenException(
+        apiError('client.cannotCancelOthersRequest'),
+      );
     }
 
     if (request.status !== ClientRequestStatus.PENDING) {
       throw new BadRequestException(
-        `This request has already been ${request.status.toLowerCase()}`,
+        apiError('client.requestAlreadyAnswered', { status: request.status }),
       );
     }
 
@@ -1389,7 +1387,7 @@ export class ClientService {
     });
 
     if (!request) {
-      throw new NotFoundException('Invitation not found');
+      throw new NotFoundException(apiError('client.invitationNotFound'));
     }
 
     if (
@@ -1398,7 +1396,7 @@ export class ClientService {
       request.status === ClientRequestStatus.CANCELLED
     ) {
       throw new BadRequestException(
-        `Cannot resend an invitation that has already been ${request.status.toLowerCase()}`,
+        apiError('client.cannotResendAnswered', { status: request.status }),
       );
     }
 
@@ -1484,7 +1482,7 @@ export class ClientService {
     });
 
     if (!row) {
-      throw new NotFoundException('Client relationship not found');
+      throw new NotFoundException(apiError('client.clientNotFound'));
     }
 
     const [enriched] = await this.enrichWithGroupMemberships(instructorId, [
@@ -1525,7 +1523,7 @@ export class ClientService {
     });
 
     if (!relationship) {
-      throw new NotFoundException('Client relationship not found');
+      throw new NotFoundException(apiError('client.clientNotFound'));
     }
 
     const previousStatus = relationship.status;
@@ -1600,11 +1598,11 @@ export class ClientService {
     });
 
     if (!relationship) {
-      throw new NotFoundException('Instructor relationship not found');
+      throw new NotFoundException(apiError('client.notYourCoach'));
     }
 
     if (relationship.status === InstructorClientStatus.ARCHIVED) {
-      throw new BadRequestException('Relationship is already archived');
+      throw new BadRequestException(apiError('client.alreadyLeftCoach'));
     }
 
     await relationship.update({ status: InstructorClientStatus.ARCHIVED });
@@ -1816,15 +1814,15 @@ export class ClientService {
     });
 
     if (!request) {
-      throw new NotFoundException('Invitation not found');
+      throw new NotFoundException(apiError('client.invitationNotFound'));
     }
 
     if (request.status !== ClientRequestStatus.PENDING) {
-      throw new GoneException('This invitation has already been used');
+      throw new GoneException(apiError('client.invitationUsed'));
     }
 
     if (request.expiresAt < new Date()) {
-      throw new GoneException('This invitation has expired');
+      throw new GoneException(apiError('client.invitationExpired'));
     }
 
     const instructor = request.fromUser;
@@ -1859,17 +1857,19 @@ export class ClientService {
     });
 
     if (!request) {
-      throw new NotFoundException('Invitation not found');
+      throw new NotFoundException(apiError('client.invitationNotFound'));
     }
 
     if (request.status !== ClientRequestStatus.PENDING) {
       throw new BadRequestException(
-        `This invitation has already been ${request.status.toLowerCase()}`,
+        apiError('client.invitationAlreadyAnswered', {
+          status: request.status,
+        }),
       );
     }
 
     if (request.expiresAt < new Date()) {
-      throw new BadRequestException('This invitation has expired');
+      throw new BadRequestException(apiError('client.invitationExpired'));
     }
 
     const instructorId = request.fromUserId;
@@ -1933,18 +1933,22 @@ export class ClientService {
     const request = await this.clientRequestModel.findByPk(requestId);
 
     if (!request) {
-      throw new NotFoundException('Client request not found');
+      throw new NotFoundException(apiError('client.requestNotFound'));
     }
 
     return request;
   }
 
   /**
-   * Assert no active instructor-client relationship exists between two users
+   * Assert no active instructor-client relationship exists between two users.
+   * `askedBy` picks whose point of view the refusal is written from: the
+   * coach inviting ("already your client") or the user asking ("already
+   * their client").
    */
   private async assertNoActiveRelationship(
     instructorId: string,
     clientId: string,
+    askedBy: 'instructor' | 'client',
   ): Promise<void> {
     const existing = await this.instructorClientModel.findOne({
       where: {
@@ -1956,7 +1960,11 @@ export class ClientService {
 
     if (existing) {
       throw new ConflictException(
-        'An active instructor-client relationship already exists',
+        apiError(
+          askedBy === 'instructor'
+            ? 'client.alreadyYourClient'
+            : 'client.alreadyTheirClient',
+        ),
       );
     }
   }
@@ -1981,9 +1989,7 @@ export class ClientService {
     });
 
     if (pendingRequest) {
-      throw new ConflictException(
-        'A pending request already exists between these users',
-      );
+      throw new ConflictException(apiError('client.requestAlreadyPending'));
     }
   }
 }

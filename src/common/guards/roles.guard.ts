@@ -7,6 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { RoleService } from '../../modules/role/role.service';
 import { ROLES_KEY } from '../decorators/roles.decorator';
+import { apiError } from '../i18n';
 
 /**
  * RolesGuard
@@ -41,7 +42,7 @@ export class RolesGuard implements CanActivate {
     const user = request.user;
 
     if (!user) {
-      throw new ForbiddenException('User not authenticated');
+      throw new ForbiddenException(apiError('common.unauthorized'));
     }
 
     // JwtStrategy already attaches the user's global role names, so the
@@ -55,8 +56,14 @@ export class RolesGuard implements CanActivate {
       : await this.roleService.userHasAnyRole(user.id, requiredRoles);
 
     if (!hasRole) {
+      // Say "coaches only" when that is what the route needs; any other
+      // role list (admin, support, writer) gets the plain refusal.
       throw new ForbiddenException(
-        `Access denied. Required roles: ${requiredRoles.join(', ')}`,
+        apiError(
+          requiredRoles.includes('INSTRUCTOR')
+            ? 'common.coachesOnly'
+            : 'common.forbidden',
+        ),
       );
     }
 

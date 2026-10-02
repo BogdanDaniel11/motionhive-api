@@ -18,6 +18,7 @@ import { NotificationService } from '../../notification/notification.service';
 import { NotificationOutbox } from '../../notification/notification-outbox';
 import { refundIssuedForClient } from '../notifications';
 import { CreateRefundDto } from '../dto/create-refund.dto';
+import { apiError } from '../../../common/i18n';
 
 export const MAX_REFUND_WINDOW_DAYS = 14;
 
@@ -37,13 +38,15 @@ export class RefundService {
     dto: CreateRefundDto,
   ): Promise<Payment> {
     const payment = await this.paymentModel.findByPk(dto.paymentId);
-    if (!payment) throw new NotFoundException('Payment not found.');
+    if (!payment) {
+      throw new NotFoundException(apiError('payment.paymentNotFound'));
+    }
     if (payment.instructorId !== instructorId) {
-      throw new ForbiddenException('You do not own this payment.');
+      throw new ForbiddenException(apiError('payment.paymentNotYours'));
     }
     if (payment.status !== PaymentStatus.SUCCEEDED) {
       throw new BadRequestException(
-        `Cannot refund a payment in status ${payment.status}.`,
+        apiError('payment.refundNotAllowed', { status: payment.status }),
       );
     }
 
@@ -52,7 +55,9 @@ export class RefundService {
       const windowMs = MAX_REFUND_WINDOW_DAYS * 24 * 60 * 60 * 1000;
       if (Date.now() - payment.paidAt.getTime() > windowMs) {
         throw new ForbiddenException(
-          `Refund window of ${MAX_REFUND_WINDOW_DAYS} days has expired.`,
+          apiError('payment.refundWindowExpired', {
+            days: MAX_REFUND_WINDOW_DAYS,
+          }),
         );
       }
     }
@@ -60,13 +65,11 @@ export class RefundService {
     const refundAmount = dto.amountCents ?? payment.amountCents;
     const alreadyRefunded = payment.amountRefundedCents ?? 0;
     if (refundAmount + alreadyRefunded > payment.amountCents) {
-      throw new BadRequestException(
-        'Refund amount exceeds the original payment.',
-      );
+      throw new BadRequestException(apiError('payment.refundTooLarge'));
     }
 
     if (!payment.stripeChargeId && !payment.stripePaymentIntentId) {
-      throw new BadRequestException('No Stripe charge to refund.');
+      throw new BadRequestException(apiError('payment.notRefundableHere'));
     }
 
     const refundParams: Record<string, unknown> = {

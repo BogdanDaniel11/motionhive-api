@@ -1,4 +1,6 @@
+import { content } from './content';
 import { email } from './email';
+import { errors } from './errors';
 import { notifications } from './notifications';
 
 /**
@@ -6,4 +8,4 @@ import { notifications } from './notifications';
  * every other language must provide exactly these keys or fail to
  * compile.
  */
-export const en = { email, notifications };
+export const en = { content, email, errors, notifications };
