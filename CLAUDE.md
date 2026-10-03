@@ -2,6 +2,16 @@
 
 > **Naming note:** The product is **MotionHive**. The repo directory is still `beeactive-api` (historical, not renamed to avoid breaking IDE workspaces, git remotes, and absolute paths). Code identifiers, Stripe metadata (`platform: 'beeactive'`), DB column names, and email template variables also still use "beeactive" — **intentionally, do not mass-rename**. Stripe stores that metadata on live records and a sed-rename would desync production state. A rename is a dedicated future sprint, not incidental cleanup.
 
+## Two languages, always (English + Romanian)
+
+Every sentence a person can read ships in English **and** Romanian in the same change. No English-only text, no "translate later". Here that means:
+- **API errors**: `throw new XxxException(apiError('<module>.<name>', params))`, with the sentence in `src/common/i18n/catalog/{en,ro}/errors/<module>.ts`. Never a literal string in an exception. DTO messages a person can hit are catalog keys too.
+- **Notifications** (in-app, email, push): builders return `message: { key, params }`, the copy goes in both catalogs, and every builder gets a sample in `test/fixtures/notification-samples.ts`.
+- **Emails**: copy in `catalog/{en,ro}/email/<domain>.ts`, read through `emailCopy(locale, prefix)`. Every `EmailService.sendXxx` takes the recipient's `locale`, and new emails get a sample in `test/fixtures/email-samples.ts`.
+- **Our own content rows** (starters, catalog exercises): the `translations` JSONB, authored in `docs/content/translations/`.
+
+English defines the `Catalog` type, so a key missing in `ro` fails the build: never silence it with a cast. Romanian plurals need `one` / `few` / `other`. No dashes as punctuation in either language. The apps follow the same rule for their own text (`beeactive-ui/CLAUDE.md`, Translations). How-to detail: Key Patterns, i18n, below.
+
 ## Project Overview
 Fitness platform REST API built with NestJS. Manages instructors, clients, groups, sessions, profiles, blog, and Stripe Connect payments.
 
