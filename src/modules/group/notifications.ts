@@ -5,6 +5,10 @@ import { GroupMemberRole } from './entities/group-member.entity';
 /**
  * Notification builders for the group module.
  *
+ * Copy lives in the catalog (`notifications.group.*` under
+ * src/common/i18n/catalog). A missing person or group name is passed as
+ * `null`; the message words that case itself, per language.
+ *
  * Click-target rule: the FE detail route is `/groups/:id` (not
  * `group-detail`), and the list is `/groups`. When the recipient is
  * still a member, we deep-link to the group; when they've been
@@ -27,13 +31,13 @@ export function groupMemberLeft(
   group: GroupRef,
   memberName: string | null,
 ): NotifyParams {
-  const who = memberName ?? 'A member';
-  const what = group.name ? ` "${group.name}"` : ' your group';
   return {
     userId: ownerId,
     type: NotificationType.GROUP_MEMBER_LEFT,
-    title: 'A member left your group',
-    body: `${who} left${what}.`,
+    message: {
+      key: 'group.memberLeft',
+      params: { name: memberName, group: group.name },
+    },
     data: { screen: 'groups', entityId: group.id },
   };
 }
@@ -43,12 +47,10 @@ export function groupMemberRemoved(
   removedUserId: string,
   group: GroupRef,
 ): NotifyParams {
-  const where = group.name ? `"${group.name}"` : 'a group';
   return {
     userId: removedUserId,
     type: NotificationType.GROUP_MEMBER_REMOVED,
-    title: 'Removed from group',
-    body: `You've been removed from ${where}.`,
+    message: { key: 'group.memberRemoved', params: { group: group.name } },
     // No entityId: the user can no longer access /groups/<id>. Land
     // on the list instead.
     data: { screen: 'groups' },
@@ -61,13 +63,13 @@ export function groupJoinRequestReceived(
   group: GroupRef,
   requesterName: string | null,
 ): NotifyParams {
-  const who = requesterName ?? 'Someone';
-  const what = group.name ? ` "${group.name}"` : '';
   return {
     userId: ownerId,
     type: NotificationType.GROUP_JOIN_REQUEST_RECEIVED,
-    title: 'New request to join your group',
-    body: `${who} requested to join${what}.`,
+    message: {
+      key: 'group.joinRequestReceived',
+      params: { name: requesterName, group: group.name },
+    },
     data: { screen: 'groups', entityId: group.id },
   };
 }
@@ -77,12 +79,13 @@ export function groupJoinRequestApproved(
   requesterId: string,
   group: GroupRef,
 ): NotifyParams {
-  const where = group.name ? ` to "${group.name}"` : '';
   return {
     userId: requesterId,
     type: NotificationType.GROUP_JOIN_REQUEST_APPROVED,
-    title: 'Join request approved',
-    body: `You are now a member${where}.`,
+    message: {
+      key: 'group.joinRequestApproved',
+      params: { group: group.name },
+    },
     data: { screen: 'groups', entityId: group.id },
   };
 }
@@ -92,12 +95,13 @@ export function groupJoinRequestRejected(
   requesterId: string,
   group: GroupRef,
 ): NotifyParams {
-  const where = group.name ? ` to "${group.name}"` : '';
   return {
     userId: requesterId,
     type: NotificationType.GROUP_JOIN_REQUEST_REJECTED,
-    title: 'Join request not approved',
-    body: `The owner declined your request${where}.`,
+    message: {
+      key: 'group.joinRequestRejected',
+      params: { group: group.name },
+    },
     // The user isn't a member, so /groups/<id> may 403 depending on
     // visibility. Land them on the list.
     data: { screen: 'groups' },
@@ -109,12 +113,13 @@ export function groupOwnershipTransferredToNewOwner(
   newOwnerId: string,
   group: GroupRef,
 ): NotifyParams {
-  const what = group.name ? ` of "${group.name}"` : '';
   return {
     userId: newOwnerId,
     type: NotificationType.GROUP_OWNERSHIP_TRANSFERRED,
-    title: 'You are now the group owner',
-    body: `Ownership${what} was transferred to you.`,
+    message: {
+      key: 'group.ownershipReceived',
+      params: { group: group.name },
+    },
     data: { screen: 'groups', entityId: group.id },
   };
 }
@@ -124,12 +129,13 @@ export function groupOwnershipTransferredFromOldOwner(
   oldOwnerId: string,
   group: GroupRef,
 ): NotifyParams {
-  const what = group.name ? ` "${group.name}"` : '';
   return {
     userId: oldOwnerId,
     type: NotificationType.GROUP_OWNERSHIP_TRANSFERRED,
-    title: 'Group ownership transferred',
-    body: `You transferred ownership of${what}.`,
+    message: {
+      key: 'group.ownershipTransferred',
+      params: { group: group.name },
+    },
     data: { screen: 'groups', entityId: group.id },
   };
 }
@@ -140,13 +146,13 @@ export function groupInvitationReceived(
   group: GroupRef,
   inviterName: string | null,
 ): NotifyParams {
-  const who = inviterName ?? 'Someone';
-  const what = group.name ? ` "${group.name}"` : ' a group';
   return {
     userId: inviteeUserId,
     type: NotificationType.GROUP_INVITATION_RECEIVED,
-    title: 'You were invited to a group',
-    body: `${who} invited you to join${what}.`,
+    message: {
+      key: 'group.invitationReceived',
+      params: { name: inviterName, group: group.name },
+    },
     // No entityId until they accept — they may not yet have access.
     data: { screen: 'groups' },
   };
@@ -158,13 +164,13 @@ export function groupInvitationAccepted(
   group: GroupRef,
   inviteeName: string | null,
 ): NotifyParams {
-  const who = inviteeName ?? 'A user';
-  const what = group.name ? ` "${group.name}"` : ' your group';
   return {
     userId: ownerId,
     type: NotificationType.GROUP_INVITATION_ACCEPTED,
-    title: 'Invitation accepted',
-    body: `${who} accepted your invitation to${what}.`,
+    message: {
+      key: 'group.invitationAccepted',
+      params: { name: inviteeName, group: group.name },
+    },
     data: { screen: 'groups', entityId: group.id },
   };
 }
@@ -175,42 +181,34 @@ export function groupInvitationDeclined(
   group: GroupRef,
   inviteeName: string | null,
 ): NotifyParams {
-  const who = inviteeName ?? 'A user';
-  const what = group.name ? ` "${group.name}"` : ' your group';
   return {
     userId: ownerId,
     type: NotificationType.GROUP_INVITATION_DECLINED,
-    title: 'Invitation declined',
-    body: `${who} declined your invitation to${what}.`,
+    message: {
+      key: 'group.invitationDeclined',
+      params: { name: inviteeName, group: group.name },
+    },
     data: { screen: 'groups', entityId: group.id },
   };
 }
 
 /**
- * Member — their role within the group changed. Accepts the
- * GroupMemberRole enum value (uppercase) and maps to a human label
- * locally so the body doesn't break if the enum string is ever
- * renamed (e.g. `"GROUP_MODERATOR"` → "your role is now a
- * group_moderator").
+ * Member — their role within the group changed. The role travels as the
+ * raw enum value; the message maps it to a word per language (and falls
+ * back to "member" for a value it does not know).
  */
 export function groupMemberRoleChanged(
   memberUserId: string,
   group: GroupRef,
   newRole: GroupMemberRole,
 ): NotifyParams {
-  const label = ROLE_LABELS[newRole] ?? 'member';
-  const where = group.name ? ` in "${group.name}"` : '';
   return {
     userId: memberUserId,
     type: NotificationType.GROUP_MEMBER_ROLE_CHANGED,
-    title: 'Your group role changed',
-    body: `You are now a ${label}${where}.`,
+    message: {
+      key: 'group.roleChanged',
+      params: { role: newRole, group: group.name },
+    },
     data: { screen: 'groups', entityId: group.id },
   };
 }
-
-const ROLE_LABELS: Record<GroupMemberRole, string> = {
-  [GroupMemberRole.OWNER]: 'owner',
-  [GroupMemberRole.MODERATOR]: 'moderator',
-  [GroupMemberRole.MEMBER]: 'member',
-};

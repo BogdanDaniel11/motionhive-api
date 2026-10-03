@@ -4,6 +4,7 @@ import { UnrecoverableError } from 'bullmq';
 import { PaymentsWorker } from './payments.worker';
 import { PaymentRemindersService } from '../../../payment/services/payment-reminders.service';
 import { BalanceCacheService } from '../../../payment/services/balance-cache.service';
+import { CustomerService } from '../../../payment/services/customer.service';
 import { WebhookHandlerService } from '../../../payment/services/webhook-handler.service';
 import { makeSilentLogger } from '../../../../../test/helpers/sequelize-mocks';
 
@@ -36,6 +37,9 @@ describe('PaymentsWorker', () => {
       .fn()
       .mockResolvedValue({ resolved: 0, agedOut: 0, stillOrphaned: 0 }),
   };
+  const customers = {
+    syncPreferredLocale: jest.fn().mockResolvedValue(true),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -45,6 +49,7 @@ describe('PaymentsWorker', () => {
         { provide: PaymentRemindersService, useValue: reminders },
         { provide: BalanceCacheService, useValue: balanceCache },
         { provide: WebhookHandlerService, useValue: webhooks },
+        { provide: CustomerService, useValue: customers },
         { provide: WINSTON_MODULE_NEST_PROVIDER, useValue: makeSilentLogger() },
       ],
     }).compile();
@@ -90,6 +95,18 @@ describe('PaymentsWorker', () => {
   it('routes reconcile_webhooks to WebhookHandlerService.reconcileOrphaned', async () => {
     await worker.process(fakeJob('reconcile_webhooks'));
     expect(webhooks.reconcileOrphaned).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes sync_customer_locale to CustomerService with the new language', async () => {
+    const job = {
+      data: { userId: 'user-1', locale: 'ro' },
+      queueName: 'payments',
+      name: 'sync_customer_locale',
+      id: 'j',
+      attemptsMade: 0,
+    } as unknown as Parameters<PaymentsWorker['process']>[0];
+    await worker.process(job);
+    expect(customers.syncPreferredLocale).toHaveBeenCalledWith('user-1', 'ro');
   });
 
   it('unknown job name → UnrecoverableError', async () => {

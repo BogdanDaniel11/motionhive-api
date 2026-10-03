@@ -15,6 +15,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiTags } from '@nestjs/swagger';
 import { ApiEndpoint } from '../../../common/decorators/api-response.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
+import { RawContent } from '../../../common/decorators/raw-content.decorator';
 import { AdminDocs } from '../../../common/docs/admin.docs';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import type { AuthenticatedRequest } from '../../../common/types/authenticated-request';
@@ -28,6 +29,7 @@ import { AssignRoleDto } from '../dto/assign-role.dto';
  * mutating role/restore endpoints override to SUPER_ADMIN at the method.
  */
 @ApiTags('Admin — Users')
+@RawContent()
 @Controller('admin/users')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('ADMIN', 'SUPER_ADMIN', 'SUPPORT')

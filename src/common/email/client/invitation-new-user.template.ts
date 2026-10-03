@@ -1,3 +1,4 @@
+import type { Locale } from '../../i18n';
 import { escapeHtml } from '../../utils/html.utils';
 import {
   baseLayout,
@@ -11,6 +12,14 @@ import {
   securityNote,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
+
+interface ClientInvitationNewUserParams {
+  instructorName: string;
+  signUpLink: string;
+  message?: string;
+  locale: Locale;
+}
 
 /**
  * Client invitation to a recipient who does NOT yet have a MotionHive
@@ -18,54 +27,51 @@ import {
  * registers, `acceptByToken` auto-accepts the invitation. Without a
  * token they can still sign up via the generic referral path.
  */
-export function clientInvitationNewUserTemplate(params: {
-  instructorName: string;
-  signUpLink: string;
-  message?: string;
-}): string {
-  const { instructorName, signUpLink, message } = params;
-  const safeInstructor = escapeHtml(instructorName);
-  const safeMessage = escapeHtml(message);
+export function clientInvitationNewUserTemplate(
+  params: ClientInvitationNewUserParams,
+): string {
+  const { instructorName, signUpLink, message, locale } = params;
+  const c = emailCopy(locale, 'email.client.invitationNewUser');
+  const name = { name: instructorName };
 
   const content = `
-    ${eyebrow('INVITATION', 'action')}
-    ${heading("You've been invited!")}
-    ${subheading(`${safeInstructor} wants you to join MotionHive as their client`)}
-    ${personCard({ name: instructorName, role: 'Coach' })}
-    ${paragraph(`<strong>${safeInstructor}</strong> would like you to join MotionHive as their client.`)}
-    ${message ? calloutBox('info', `<em>"${safeMessage}"</em>`) : ''}
-    ${primaryButton('Join MotionHive', signUpLink)}
-    ${securityNote('If you already have an account, just log in and the invitation will be waiting for you.')}
+    ${eyebrow(c.html('eyebrow'), 'action')}
+    ${heading(c.html('heading'))}
+    ${subheading(c.html('subheading', name))}
+    ${personCard({ name: escapeHtml(instructorName), role: c.html('personRole') })}
+    ${paragraph(c.html('body', name))}
+    ${message ? calloutBox('info', `<em>${c.html('messageQuote', { message })}</em>`) : ''}
+    ${primaryButton(c.html('cta'), signUpLink)}
+    ${securityNote(c.html('security'))}
   `;
 
   return baseLayout(content, {
-    preheader: `${instructorName} invited you to MotionHive`,
+    preheader: c.html('preheader', name),
     category: 'action',
+    locale,
   });
 }
 
-export function clientInvitationNewUserTemplateText(params: {
-  instructorName: string;
-  signUpLink: string;
-  message?: string;
-}): string {
-  const { instructorName, signUpLink, message } = params;
+export function clientInvitationNewUserTemplateText(
+  params: ClientInvitationNewUserParams,
+): string {
+  const { instructorName, signUpLink, message, locale } = params;
+  const c = emailCopy(locale, 'email.client.invitationNewUser');
+  const name = { name: instructorName };
+
   return plainTextLayout({
-    preheader: `${instructorName} invited you to MotionHive`,
+    preheader: c.text('preheader', name),
+    locale,
     sections: [
       {
-        heading: "You've been invited",
+        heading: c.text('heading'),
         body: [
-          `${instructorName} would like you to join MotionHive as their client.`,
-          ...(message ? [`Message: "${message}"`] : []),
+          c.text('body', name),
+          ...(message ? [c.text('messageLine', { message })] : []),
         ],
-        ctas: [{ label: 'Join MotionHive', url: signUpLink }],
+        ctas: [{ label: c.text('cta'), url: signUpLink }],
       },
-      {
-        body: [
-          'If you already have an account, just log in and the invitation will be waiting for you.',
-        ],
-      },
+      { body: [c.text('security')] },
     ],
   });
 }

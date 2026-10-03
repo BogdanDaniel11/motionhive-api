@@ -1,3 +1,4 @@
+import type { Locale } from '../../i18n';
 import { escapeHtml } from '../../utils/html.utils';
 import {
   baseLayout,
@@ -13,71 +14,82 @@ import {
   securityNote,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
 
 /**
  * Group invitation — the inviter is sending someone (registered or
  * not) a link to join their group. The accept link carries a single-
  * use token; expires in 7 days.
+ *
+ * `inviterName` is `null` when the inviter's account can no longer be
+ * resolved; the copy words that case itself.
  */
 export function invitationTemplate(
-  inviterName: string,
+  inviterName: string | null,
   groupName: string,
   acceptLink: string,
-  message?: string,
+  message: string | null | undefined,
+  locale: Locale,
 ): string {
-  const safeInviter = escapeHtml(inviterName);
-  const safeGroup = escapeHtml(groupName);
-  const safeMessage = escapeHtml(message);
+  const c = emailCopy(locale, 'email.group.invitation');
+  const name = inviterName || null;
+  const inviterCard = name
+    ? personCard({ name: escapeHtml(name), role: c.html('cardRole') })
+    : '';
   const messageBlock = message
-    ? calloutBox('info', `<em>"${safeMessage}"</em>`)
+    ? calloutBox('info', `<em>${c.html('quote', { message })}</em>`)
     : '';
 
   const content = `
-    ${eyebrow('INVITATION', 'action')}
-    ${heading("You're invited!")}
-    ${subheading(`${safeInviter} wants you to join their team`)}
-    ${personCard({ name: inviterName, role: 'Sent you an invitation' })}
-    ${paragraph(`<strong>${safeInviter}</strong> has invited you to join <strong>${safeGroup}</strong> on MotionHive — a fitness platform for instructors and clients.`)}
+    ${eyebrow(c.html('eyebrow'), 'action', locale)}
+    ${heading(c.html('heading'))}
+    ${subheading(c.html('subheading', { name }))}
+    ${inviterCard}
+    ${paragraph(c.html('body', { name, group: groupName }))}
     ${messageBlock}
-    ${primaryButton('&#129309; Accept invitation', acceptLink)}
+    ${primaryButton(`&#129309; ${c.html('cta')}`, acceptLink)}
     ${divider()}
-    ${paragraph(`By accepting, you'll be added as a member of <strong>${safeGroup}</strong> and can start joining training sessions.`)}
-    ${expiryNote('This invitation expires in <strong>7 days</strong>.')}
-    ${securityNote("If you don't know the person who sent this, you can safely ignore this email.")}
+    ${paragraph(c.html('detail', { group: groupName }))}
+    ${expiryNote(c.html('expiry'), locale)}
+    ${securityNote(c.html('security'))}
   `;
 
   return baseLayout(content, {
-    preheader: `${safeInviter} invited you to join ${safeGroup}`,
+    preheader: c.html('preheader', { name, group: groupName }),
     category: 'action',
+    locale,
   });
 }
 
 export function invitationTemplateText(
-  inviterName: string,
+  inviterName: string | null,
   groupName: string,
   acceptLink: string,
-  message?: string,
+  message: string | null | undefined,
+  locale: Locale,
 ): string {
-  const sections = [
-    {
-      heading: "You're invited",
-      body: [
-        `${inviterName} has invited you to join ${groupName} on MotionHive — a fitness platform for instructors and clients.`,
-        ...(message ? [`Personal message: "${message}"`] : []),
-      ],
-      ctas: [{ label: 'Accept invitation', url: acceptLink }],
-    },
-    {
-      body: [
-        `By accepting, you'll be added as a member of ${groupName} and can start joining training sessions.`,
-        'This invitation expires in 7 days.',
-        "If you don't know the person who sent this, you can safely ignore this email.",
-      ],
-    },
-  ];
+  const c = emailCopy(locale, 'email.group.invitation');
+  const name = inviterName || null;
 
   return plainTextLayout({
-    preheader: `${inviterName} invited you to join ${groupName}`,
-    sections,
+    preheader: c.text('preheader', { name, group: groupName }),
+    locale,
+    sections: [
+      {
+        heading: c.text('heading'),
+        body: [
+          c.text('body', { name, group: groupName }),
+          ...(message ? [c.text('message', { message })] : []),
+        ],
+        ctas: [{ label: c.text('cta'), url: acceptLink }],
+      },
+      {
+        body: [
+          c.text('detail', { group: groupName }),
+          c.text('expiry'),
+          c.text('security'),
+        ],
+      },
+    ],
   });
 }

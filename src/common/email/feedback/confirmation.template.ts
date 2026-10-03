@@ -1,3 +1,4 @@
+import type { Locale } from '../../i18n';
 import { escapeHtml } from '../../utils/html.utils';
 import {
   baseLayout,
@@ -10,68 +11,67 @@ import {
   plainTextLayout,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
 
 /**
  * Acknowledgement of a feedback submission. Sent only to the address
  * the submitter typed (NOT looked up from a `userId` — that vector
  * was removed for security; see `FeedbackService.create`).
+ *
+ * `type` is the feedback type the form sends (`BUG`, `SUGGESTION`,
+ * `OTHER`). The copy words each one; anything else reads as plain
+ * "feedback".
  */
 export function feedbackConfirmationTemplate(
   type: string,
   title: string,
-  name?: string,
+  name: string | null | undefined,
+  locale: Locale,
 ): string {
-  const safeTitle = escapeHtml(title);
-  const safeType = escapeHtml(type);
-  const greeting = name ? `Hi ${escapeHtml(name)},` : 'Hi there,';
-  const typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
-  const safeTypeLabel = escapeHtml(`Your ${typeLabel}`);
+  const c = emailCopy(locale, 'email.feedback.confirmation');
+  const kind = type.toUpperCase();
 
   const content = `
-    ${eyebrow('FEEDBACK RECEIVED', 'confirmation')}
-    ${heading('Feedback received &#9989;')}
-    ${subheading('We appreciate you taking the time to write to us')}
-    ${paragraph(`${greeting} thank you for your ${safeType}. Every piece of feedback helps us build a better platform.`)}
-    ${dataCard(dataRow(safeTypeLabel, safeTitle))}
-    ${paragraph("Our team reviews every submission. While we can't respond to each one individually, your input directly shapes what we build next.")}
+    ${eyebrow(c.html('eyebrow'), 'confirmation', locale)}
+    ${heading(`${c.html('heading')} &#9989;`)}
+    ${subheading(c.html('subheading'))}
+    ${paragraph(c.html('intro', { name: name || null, type: kind }))}
+    ${dataCard(dataRow(c.html('titleLabel', { type: kind }), escapeHtml(title)))}
+    ${paragraph(c.html('review'))}
     ${divider()}
-    ${paragraph('Thanks for helping us improve MotionHive!')}
+    ${paragraph(c.html('thanks'))}
   `;
 
   return baseLayout(content, {
-    preheader: 'Thanks for your feedback!',
-    footerNote:
-      "You're receiving this because you submitted feedback on MotionHive.",
+    preheader: c.html('preheader'),
+    footerNote: c.html('footerNote'),
     category: 'confirmation',
+    locale,
   });
 }
 
 export function feedbackConfirmationTemplateText(
   type: string,
   title: string,
-  name?: string,
+  name: string | null | undefined,
+  locale: Locale,
 ): string {
-  const greeting = name ? `Hi ${name},` : 'Hi there,';
-  const typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
+  const c = emailCopy(locale, 'email.feedback.confirmation');
+  const kind = type.toUpperCase();
 
   return plainTextLayout({
-    preheader: 'Thanks for your feedback!',
-    footerNote:
-      "You're receiving this because you submitted feedback on MotionHive.",
+    preheader: c.text('preheader'),
+    footerNote: c.text('footerNote'),
+    locale,
     sections: [
       {
-        heading: 'Feedback received',
-        body: [
-          `${greeting} thank you for your ${type}. Every piece of feedback helps us build a better platform.`,
-        ],
-        details: [{ label: `Your ${typeLabel}`, value: title }],
-      },
-      {
-        body: [
-          "Our team reviews every submission. While we can't respond to each one individually, your input directly shapes what we build next.",
-          'Thanks for helping us improve MotionHive!',
+        heading: c.text('heading'),
+        body: [c.text('intro', { name: name || null, type: kind })],
+        details: [
+          { label: c.text('titleLabel', { type: kind }), value: title },
         ],
       },
+      { body: [c.text('review'), c.text('thanks')] },
     ],
   });
 }

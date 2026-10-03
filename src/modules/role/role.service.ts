@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Transaction, WhereOptions } from 'sequelize';
+import { apiError } from '../../common/i18n';
 import { Role } from './entities/role.entity';
 import { Permission } from './entities/permission.entity';
 import { UserRole } from './entities/user-role.entity';
@@ -83,7 +84,7 @@ export class RoleService {
     });
 
     if (!role) {
-      throw new NotFoundException(`Role with ID ${id} not found`);
+      throw new NotFoundException(apiError('role.notFound'));
     }
 
     return role;
@@ -96,7 +97,7 @@ export class RoleService {
     });
 
     if (!role) {
-      throw new NotFoundException(`Role ${name} not found`);
+      throw new NotFoundException(apiError('role.notFound'));
     }
 
     return role;
@@ -302,7 +303,7 @@ export class RoleService {
     });
 
     if (!permission) {
-      throw new NotFoundException(`Permission ${name} not found`);
+      throw new NotFoundException(apiError('role.permissionNotFound'));
     }
 
     return permission;

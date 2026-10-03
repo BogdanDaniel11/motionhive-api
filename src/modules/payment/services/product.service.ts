@@ -25,6 +25,7 @@ import {
 } from '../../../common/dto/pagination.dto';
 import { CreateProductDto } from '../dto/create-product.dto';
 import { UpdateProductDto } from '../dto/update-product.dto';
+import { apiError } from '../../../common/i18n';
 
 /**
  * ProductService
@@ -54,9 +55,7 @@ export class ProductService {
       dto.type === ProductType.SUBSCRIPTION &&
       (!dto.interval || !dto.intervalCount)
     ) {
-      throw new ConflictException(
-        'Subscription products require interval and intervalCount.',
-      );
+      throw new ConflictException(apiError('payment.billingCadenceRequired'));
     }
     const [account, user] = await Promise.all([
       this.stripeAccountModel.findOne({ where: { userId: instructorId } }),
@@ -216,9 +215,7 @@ export class ProductService {
         dto.amountCents !== product.amountCents
       ) {
         if (!product.stripeProductId) {
-          throw new ConflictException(
-            'Product is not linked to a Stripe product yet.',
-          );
+          throw new ConflictException(apiError('payment.productNotLinked'));
         }
         const newPrice = await this.stripeService.stripe.prices.create({
           product: product.stripeProductId,
@@ -303,10 +300,10 @@ export class ProductService {
   ): Promise<Product> {
     const product = await this.productModel.findByPk(productId);
     if (!product) {
-      throw new NotFoundException(`Product ${productId} not found`);
+      throw new NotFoundException(apiError('payment.productNotFound'));
     }
     if (product.instructorId !== instructorId) {
-      throw new ForbiddenException('You do not own this product.');
+      throw new ForbiddenException(apiError('payment.productNotYours'));
     }
     return product;
   }

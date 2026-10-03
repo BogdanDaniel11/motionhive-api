@@ -10,6 +10,7 @@ import { Sequelize } from 'sequelize-typescript';
 import { Transaction } from 'sequelize';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { assertOwned } from '../../common/utils/ownership.utils';
+import { apiError } from '../../common/i18n';
 import { InstructorProfile } from '../profile/entities/instructor-profile.entity';
 import { MeetingProvider, Venue, VenueKind } from './entities/venue.entity';
 import { CreateVenueDto } from './dto/create-venue.dto';
@@ -183,30 +184,22 @@ export class VenueService {
       dto.kind === VenueKind.ONLINE ? true : (dto.isOnline ?? false);
 
     if (dto.kind === VenueKind.ONLINE && !dto.meetingUrl) {
-      throw new BadRequestException(
-        'meetingUrl is required for online venues.',
-      );
+      throw new BadRequestException(apiError('venue.meetingLinkRequired'));
     }
 
     if (isOnline && !dto.meetingUrl) {
-      throw new BadRequestException(
-        'meetingUrl is required when isOnline is true.',
-      );
+      throw new BadRequestException(apiError('venue.meetingLinkRequired'));
     }
 
     const needsAddress = ![VenueKind.ONLINE, VenueKind.CLIENT_HOME].includes(
       dto.kind,
     );
     if (needsAddress && !dto.city) {
-      throw new BadRequestException(
-        'city is required for physical venues (GYM, STUDIO, PARK, OUTDOOR, OTHER).',
-      );
+      throw new BadRequestException(apiError('venue.cityRequired'));
     }
 
     if (dto.countryCode && !/^[A-Z]{2}$/.test(dto.countryCode)) {
-      throw new BadRequestException(
-        'countryCode must be an ISO 3166-1 alpha-2 code (2 uppercase letters).',
-      );
+      throw new BadRequestException(apiError('venue.invalidCountry'));
     }
 
     // Do NOT reject a lingering travelRadiusKm on kind changes. The
@@ -252,9 +245,7 @@ export class VenueService {
       where: { userId },
     });
     if (!instructor) {
-      throw new ForbiddenException(
-        'Only users with an instructor profile can manage venues.',
-      );
+      throw new ForbiddenException(apiError('venue.coachesOnly'));
     }
     return instructor;
   }
@@ -265,7 +256,7 @@ export class VenueService {
   ): asserts venue is Venue {
     // `onMismatch: 'hide'` so a cross-instructor lookup can't probe existence.
     assertOwned(venue, instructorId, (v) => v.instructorId, {
-      notFoundMessage: 'Venue not found.',
+      notFoundMessage: apiError('venue.notFound'),
       onMismatch: 'hide',
     });
   }

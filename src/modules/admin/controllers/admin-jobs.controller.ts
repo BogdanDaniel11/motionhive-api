@@ -12,6 +12,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiTags } from '@nestjs/swagger';
 import { ApiEndpoint } from '../../../common/decorators/api-response.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
+import { RawContent } from '../../../common/decorators/raw-content.decorator';
 import { AdminDocs } from '../../../common/docs/admin.docs';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import type { AuthenticatedRequest } from '../../../common/types/authenticated-request';
@@ -20,6 +21,7 @@ import { TriggerJobDto } from '../dto/trigger-job.dto';
 
 /** Operations — jobs/queues. Read ADMIN+; trigger SUPER_ADMIN. */
 @ApiTags('Admin — Jobs')
+@RawContent()
 @Controller('admin/jobs')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('ADMIN', 'SUPER_ADMIN', 'SUPPORT')

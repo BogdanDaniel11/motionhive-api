@@ -1,8 +1,4 @@
-import {
-  registerDecorator,
-  ValidationOptions,
-  ValidationArguments,
-} from 'class-validator';
+import { registerDecorator, ValidationOptions } from 'class-validator';
 
 interface FutureDateOptions {
   /**
@@ -48,9 +44,9 @@ export function IsFutureOrCloseToNow(
           const earliest = Date.now() - skewMinutes * 60_000;
           return parsed.getTime() >= earliest;
         },
-        defaultMessage(args: ValidationArguments) {
-          const [m] = args.constraints as [number];
-          return `${args.property} must be a future date (up to ${m} min past tolerated)`;
+        // A catalog key: the ValidationPipe answers with its translation.
+        defaultMessage() {
+          return 'errors.validation.dateInPast';
         },
       },
     });

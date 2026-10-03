@@ -11,7 +11,7 @@ import {
  * on the same object. Typical use: confirmPassword must equal password.
  *
  * @example
- * @Match('password', { message: 'Passwords do not match' })
+ * @Match('password', { message: 'errors.validation.passwordsDoNotMatch' })
  * confirmPassword: string;
  */
 export function Match(property: string, validationOptions?: ValidationOptions) {
@@ -30,9 +30,10 @@ export function Match(property: string, validationOptions?: ValidationOptions) {
           ];
           return value === relatedValue;
         },
-        defaultMessage(args: ValidationArguments) {
-          const [relatedPropertyName] = args.constraints as [string];
-          return `${args.property} must match ${relatedPropertyName}`;
+        // A catalog key: the ValidationPipe answers with its translation.
+        // Name a more specific one with `message` (passwords do).
+        defaultMessage() {
+          return 'errors.validation.valuesDoNotMatch';
         },
       },
     });

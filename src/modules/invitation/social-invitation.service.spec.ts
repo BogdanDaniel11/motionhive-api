@@ -68,10 +68,11 @@ describe('SocialInvitationService (smoke)', () => {
         'Maya P',
         'u-1',
         "let's train",
+        'en',
       );
     });
 
-    it('falls back to "A friend" when both names are blank', async () => {
+    it('passes no name when both are blank, so the email words it', async () => {
       userModel.findByPk.mockResolvedValueOnce({
         ...me,
         firstName: '',
@@ -80,9 +81,10 @@ describe('SocialInvitationService (smoke)', () => {
       await service.sendFriendInvite('u-1', { email: 'friend@x.io' });
       expect(emailService.sendFriendInviteEmail).toHaveBeenCalledWith(
         'friend@x.io',
-        'A friend',
+        null,
         'u-1',
         undefined,
+        'en',
       );
     });
   });
@@ -127,6 +129,7 @@ describe('SocialInvitationService (smoke)', () => {
         'Dan Whitlock',
         'Maya P',
         'great with beginners',
+        'en',
       );
     });
   });

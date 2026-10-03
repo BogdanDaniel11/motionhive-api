@@ -5,6 +5,7 @@ import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { Feedback } from './entities/feedback.entity';
 import { CreateFeedbackDto } from './dto/create-feedback.dto';
 import { EmailService } from '../../common/services/email.service';
+import { toLocale } from '../../common/i18n';
 
 @Injectable()
 export class FeedbackService {
@@ -41,7 +42,13 @@ export class FeedbackService {
 
     if (dto.email) {
       this.emailService
-        .sendFeedbackConfirmation(dto.email, dto.type, dto.title)
+        .sendFeedbackConfirmation(
+          dto.email,
+          dto.type,
+          dto.title,
+          undefined,
+          toLocale(dto.language),
+        )
         .catch((err: unknown) =>
           this.logger.error(
             `Failed to send feedback confirmation to ${dto.email}: ${(err as Error).message}`,

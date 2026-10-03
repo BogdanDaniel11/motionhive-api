@@ -11,6 +11,12 @@ import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { Op, Transaction } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 
+import {
+  apiError,
+  toLocale,
+  translatedText,
+  type Locale,
+} from '../../common/i18n';
 import { escapeLikeWildcards } from '../../common/utils/search.utils';
 
 import {
@@ -151,10 +157,10 @@ export class ProgramAssignmentService {
       program.source === ProgramSource.System &&
       program.status === ProgramStatus.Published;
     if (!program || (!isOwnedByCaller && !isSystemStarter)) {
-      throw new NotFoundException('Program not found.');
+      throw new NotFoundException(apiError('workout.programNotFound'));
     }
     if (program.deletedAt) {
-      throw new BadRequestException('Cannot assign a deleted program.');
+      throw new BadRequestException(apiError('workout.cannotAssignDeleted'));
     }
 
     // The client must be in an ACTIVE instructor↔client relationship.
@@ -166,19 +172,21 @@ export class ProgramAssignmentService {
       },
     });
     if (!relationship) {
-      throw new ForbiddenException(
-        'You can only assign programs to your active clients.',
-      );
+      throw new ForbiddenException(apiError('workout.assignActiveClientsOnly'));
     }
 
     // Pull the client display name for the notification (we already
     // have instructorName via the controller).
     const client = await this.userModel.findByPk(dto.clientId, {
-      attributes: ['id', 'firstName', 'lastName'],
+      attributes: ['id', 'firstName', 'lastName', 'language'],
     });
     if (!client) {
-      throw new NotFoundException('Client not found.');
+      throw new NotFoundException(apiError('workout.clientNotFound'));
     }
+    // The assignment is the client's copy of the plan, so a starter's text
+    // is written in the language they train in.
+    const clientLocale = toLocale(client.language);
+    const programName = translatedText(program, 'name', clientLocale);
 
     // Resolved before the transaction opens: a day-count mismatch is a bad
     // request and should be refused before anything is written.
@@ -191,7 +199,7 @@ export class ProgramAssignmentService {
           clientId: dto.clientId,
           instructorClientId: relationship.id,
           masterProgramId: program.id,
-          programNameSnapshot: program.name,
+          programNameSnapshot: programName,
           status: ProgramAssignmentStatus.Active,
           startDate: dto.startDate,
           endDate: this.computeEndDate(program, dto.startDate, dayMap),
@@ -201,7 +209,14 @@ export class ProgramAssignmentService {
         { transaction: tx },
       );
 
-      await this.cloneTree(assignment.id, program, dto.startDate, tx, dayMap);
+      await this.cloneTree(
+        assignment.id,
+        program,
+        dto.startDate,
+        tx,
+        dayMap,
+        clientLocale,
+      );
       return assignment;
     });
 
@@ -212,7 +227,7 @@ export class ProgramAssignmentService {
         programAssignedForClient({
           clientId: dto.clientId,
           assignmentId: created.id,
-          programName: program.name,
+          programName,
           startDate: dto.startDate,
           instructorName: instructorDisplayName,
         }),
@@ -360,6 +375,7 @@ export class ProgramAssignmentService {
                     'kind',
                     'level',
                     'thumbnailUrl',
+                    'translations',
                   ],
                 },
                 {
@@ -375,10 +391,10 @@ export class ProgramAssignmentService {
       ],
     });
     if (!assignment) {
-      throw new NotFoundException('Assignment not found.');
+      throw new NotFoundException(apiError('workout.assignmentNotFound'));
     }
     if (assignment.instructorId !== userId && assignment.clientId !== userId) {
-      throw new NotFoundException('Assignment not found.');
+      throw new NotFoundException(apiError('workout.assignmentNotFound'));
     }
     return assignment;
   }
@@ -462,20 +478,18 @@ export class ProgramAssignmentService {
 
     // Own it or it doesn't exist, same hide-existence rule as elsewhere.
     if (!program || program.ownerId !== userId) {
-      throw new NotFoundException('Routine not found.');
+      throw new NotFoundException(apiError('workout.routineNotFound'));
     }
     const source = program.workouts?.[0];
     if (!source) {
       throw new BadRequestException(
-        'This routine has no exercises yet, so there is nothing to schedule.',
+        apiError('workout.routineNothingToSchedule'),
       );
     }
 
     const repeatMode = dto.repeatMode ?? ProgramRepeatMode.Weekly;
     if (repeatMode === ProgramRepeatMode.Block && !dto.repeatWeeks) {
-      throw new BadRequestException(
-        'A block schedule needs to know how many weeks it runs for.',
-      );
+      throw new BadRequestException(apiError('workout.blockNeedsWeeks'));
     }
 
     const startDate = dto.startDate ?? today;
@@ -724,12 +738,10 @@ export class ProgramAssignmentService {
       ],
     });
     if (!aw || !aw.assignment || aw.assignment.clientId !== clientId) {
-      throw new NotFoundException('Workout not found.');
+      throw new NotFoundException(apiError('workout.workoutNotFound'));
     }
     if (aw.status === WorkoutLogStatus.Completed) {
-      throw new BadRequestException(
-        "This workout is already complete and can't be skipped.",
-      );
+      throw new BadRequestException(apiError('workout.cannotSkipCompleted'));
     }
     await aw.update({ status: WorkoutLogStatus.Skipped });
     // Bump completion% so the plan progress reflects the skip. SKIPPED
@@ -958,7 +970,9 @@ export class ProgramAssignmentService {
     program: Program,
     startDate: string,
     tx: Transaction,
-    dayMap?: Map<number, number> | null,
+    dayMap: Map<number, number> | null | undefined,
+    /** Language a starter's text is copied in; a coach's own is as written. */
+    locale: Locale,
   ): Promise<void> {
     const workouts = program.workouts ?? [];
     if (workouts.length === 0) {
@@ -972,8 +986,8 @@ export class ProgramAssignmentService {
         {
           programAssignmentId: assignmentId,
           masterWorkoutId: pw.id,
-          name: pw.name,
-          notes: pw.notes,
+          name: translatedText(pw, 'name', locale),
+          notes: translatedText(pw, 'notes', locale),
           weekIndex: pw.weekIndex,
           // The slot the client sees, not the one the program was drawn on.
           dayIndex: dayMap?.get(pw.dayIndex) ?? pw.dayIndex,
@@ -999,7 +1013,7 @@ export class ProgramAssignmentService {
             masterExerciseId: pe.id,
             supersetGroupId: pe.supersetGroupId,
             orderIndex: pe.orderIndex,
-            notes: pe.notes,
+            notes: translatedText(pe, 'notes', locale),
             alternateExerciseId: pe.alternateExerciseId,
             isModifiedFromMaster: false,
           },
@@ -1039,7 +1053,7 @@ export class ProgramAssignmentService {
   ): Promise<ProgramAssignment> {
     const assignment = await this.assignmentModel.findByPk(id);
     if (!assignment || assignment.instructorId !== instructorId) {
-      throw new NotFoundException('Assignment not found.');
+      throw new NotFoundException(apiError('workout.assignmentNotFound'));
     }
     return assignment;
   }
@@ -1097,9 +1111,7 @@ export class ProgramAssignmentService {
 
     if (chosen.length !== programDays.length) {
       throw new BadRequestException(
-        `This program trains on ${programDays.length} ${
-          programDays.length === 1 ? 'day' : 'days'
-        } a week. Pick exactly that many.`,
+        apiError('workout.pickTrainingDays', { count: programDays.length }),
       );
     }
 
@@ -1156,7 +1168,7 @@ export class ProgramAssignmentService {
     ];
     if (terminal.includes(current)) {
       throw new BadRequestException(
-        `Cannot transition out of a ${current} assignment.`,
+        apiError('workout.assignmentClosed', { status: current }),
       );
     }
   }

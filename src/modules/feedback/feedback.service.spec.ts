@@ -107,6 +107,23 @@ describe('FeedbackService', () => {
         'submitter@example.com',
         'BUG',
         'Login button not working',
+        undefined,
+        'en',
+      );
+    });
+
+    it('writes the confirmation in the language of the page that sent it', async () => {
+      feedbackModel.create.mockResolvedValueOnce({ id: 'fb-3' });
+      emailService.sendFeedbackConfirmation.mockResolvedValueOnce(undefined);
+
+      await service.create({ ...baseDto, language: 'ro' }, null);
+
+      expect(emailService.sendFeedbackConfirmation).toHaveBeenCalledWith(
+        'submitter@example.com',
+        'BUG',
+        'Login button not working',
+        undefined,
+        'ro',
       );
     });
 

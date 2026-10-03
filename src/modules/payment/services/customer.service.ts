@@ -8,6 +8,7 @@ import { Sequelize } from 'sequelize-typescript';
 import { StripeCustomer } from '../entities/stripe-customer.entity';
 import { User } from '../../user/entities/user.entity';
 import { StripeService } from './stripe.service';
+import { Locale, apiError, toLocale } from '../../../common/i18n';
 
 /**
  * CustomerService — owns the platform-account `stripe_customer` row.
@@ -50,7 +51,7 @@ export class CustomerService {
 
     const user = await this.userModel.findByPk(userId, { transaction: tx });
     if (!user) {
-      throw new NotFoundException(`User ${userId} not found`);
+      throw new NotFoundException(apiError('payment.userNotFound'));
     }
 
     const stripeCustomer = await this.stripeService.stripe.customers.create(
@@ -66,6 +67,16 @@ export class CustomerService {
           'create',
         ),
       },
+    );
+
+    // Language of Stripe's own invoice emails and hosted pages. A
+    // separate call rather than a `create` param on purpose: the create
+    // idempotency key is per user, and Stripe rejects a retried key whose
+    // params changed, which a language switch between attempts would do.
+    await this.setPreferredLocale(
+      userId,
+      stripeCustomer.id,
+      toLocale(user.language),
     );
 
     const row = await this.stripeCustomerModel.create(
@@ -136,6 +147,55 @@ export class CustomerService {
       },
       { transaction: tx },
     );
+  }
+
+  /**
+   * Point a user's Stripe customer at their language, so the invoice
+   * emails Stripe sends and the pages it hosts follow the app. Called
+   * (via the `payments.sync_customer_locale` job) when a user switches
+   * language. Returns false when the user has no Stripe customer yet:
+   * nothing to sync, and creation picks the language up on its own.
+   */
+  async syncPreferredLocale(userId: string, locale: Locale): Promise<boolean> {
+    const customer = await this.stripeCustomerModel.findOne({
+      where: { userId },
+    });
+    if (!customer) return false;
+    return this.setPreferredLocale(userId, customer.stripeCustomerId, locale);
+  }
+
+  /**
+   * Never throws: the language of Stripe's emails is cosmetic, and must
+   * not fail the invoice or subscription that needed the customer.
+   */
+  private async setPreferredLocale(
+    userId: string,
+    stripeCustomerId: string,
+    locale: Locale,
+  ): Promise<boolean> {
+    try {
+      await this.stripeService.stripe.customers.update(
+        stripeCustomerId,
+        { preferred_locales: [locale] },
+        {
+          // Setting a value is naturally idempotent; the timestamp keeps
+          // a later switch back to the same language from replaying this
+          // call's cached response.
+          idempotencyKey: this.stripeService.buildIdempotencyKey(
+            'stripe_customer',
+            userId,
+            `locale_${locale}_${Date.now()}`,
+          ),
+        },
+      );
+      return true;
+    } catch (err) {
+      this.logger.warn(
+        `Could not set Stripe locale for user ${userId}: ${(err as Error).message}`,
+        'CustomerService',
+      );
+      return false;
+    }
   }
 
   /**

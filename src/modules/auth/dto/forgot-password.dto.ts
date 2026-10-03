@@ -17,7 +17,7 @@ export class ForgotPasswordDto {
     example: 'user@example.com',
     description: 'Email address to send password reset link',
   })
-  @IsEmail()
+  @IsEmail({}, { message: 'errors.validation.invalidEmail' })
   @IsNotEmpty()
   email: string;
 }

@@ -1,3 +1,4 @@
+import type { Locale } from '../../i18n';
 import { escapeHtml } from '../../utils/html.utils';
 import {
   baseLayout,
@@ -12,74 +13,93 @@ import {
   secondaryButton,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
+
+export interface GroupRoleChangedParams {
+  memberFirstName: string | null;
+  groupName: string;
+  /**
+   * The roles as `GroupMemberRole` values (`OWNER` | `MODERATOR` |
+   * `MEMBER`), not display labels: the copy names them per language.
+   * An unknown value reads as a plain member.
+   */
+  oldRole: string;
+  newRole: string;
+  groupLink: string;
+  locale: Locale;
+}
 
 /**
  * Sent to a member when their role in a group changes (promoted to
  * moderator or demoted back to member). Owner role isn't possible
  * via this path — that's the transfer-ownership flow.
  */
-export function groupRoleChangedTemplate(params: {
-  memberFirstName: string | null;
-  groupName: string;
-  oldRoleLabel: string;
-  newRoleLabel: string;
-  groupLink: string;
-}): string {
-  const { memberFirstName, groupName, oldRoleLabel, newRoleLabel, groupLink } =
+export function groupRoleChangedTemplate(
+  params: GroupRoleChangedParams,
+): string {
+  const { memberFirstName, groupName, oldRole, newRole, groupLink, locale } =
     params;
-  const safeFirst = escapeHtml(memberFirstName);
-  const safeGroup = escapeHtml(groupName);
-  const safeOld = escapeHtml(oldRoleLabel);
-  const safeNew = escapeHtml(newRoleLabel);
-  const greeting = memberFirstName ? `Hi ${safeFirst},` : 'Hi there,';
+  const c = emailCopy(locale, 'email.group.roleChanged');
 
   // Highlight moderator promotions with a brand-honey chip; demote
   // back to plain member is neutral.
-  const newTone: ChipTone =
-    newRoleLabel.toLowerCase() === 'moderator' ? 'honey' : 'neutral';
+  const newTone: ChipTone = newRole === 'MODERATOR' ? 'honey' : 'neutral';
 
   const content = `
-    ${eyebrow('ROLE UPDATED', 'update')}
-    ${paragraph(greeting)}
-    ${heading('Your role changed')}
-    ${subheading(`Your role in ${safeGroup} was updated`)}
+    ${eyebrow(c.html('eyebrow'), 'update', locale)}
+    ${paragraph(c.html('greeting', { firstName: memberFirstName || null }))}
+    ${heading(c.html('heading'))}
+    ${subheading(c.html('subheading', { group: groupName }))}
     ${dataCard(
-      dataRow('Group', safeGroup) +
-        dataRow('Was', chip(safeOld, 'neutral')) +
-        dataRow('Now', chip(safeNew, newTone)),
+      dataRow(c.html('groupLabel'), escapeHtml(groupName)) +
+        dataRow(
+          c.html('wasLabel'),
+          chip(c.html('role', { role: oldRole }), 'neutral'),
+        ) +
+        dataRow(
+          c.html('nowLabel'),
+          chip(c.html('role', { role: newRole }), newTone),
+        ),
     )}
-    ${paragraph(`The group owner updated your role in <strong>${safeGroup}</strong>.`)}
-    ${secondaryButton('Open group', groupLink)}
+    ${paragraph(c.html('body', { group: groupName }))}
+    ${secondaryButton(c.html('cta'), groupLink)}
   `;
 
   return baseLayout(content, {
-    preheader: `Your role in ${groupName} changed to ${newRoleLabel}`,
+    preheader: c.html('preheader', { group: groupName, role: newRole }),
     category: 'update',
+    locale,
   });
 }
 
-export function groupRoleChangedTemplateText(params: {
-  memberFirstName: string | null;
-  groupName: string;
-  oldRoleLabel: string;
-  newRoleLabel: string;
-  groupLink: string;
-}): string {
-  const { memberFirstName, groupName, oldRoleLabel, newRoleLabel, groupLink } =
+export function groupRoleChangedTemplateText(
+  params: GroupRoleChangedParams,
+): string {
+  const { memberFirstName, groupName, oldRole, newRole, groupLink, locale } =
     params;
-  const greeting = memberFirstName ? `Hi ${memberFirstName},` : 'Hi there,';
+  const c = emailCopy(locale, 'email.group.roleChanged');
   return plainTextLayout({
-    preheader: `Your role in ${groupName} changed to ${newRoleLabel}`,
+    preheader: c.text('preheader', { group: groupName, role: newRole }),
+    locale,
     sections: [
       {
-        heading: 'Your role changed',
-        body: [greeting, `The group owner updated your role in ${groupName}.`],
-        details: [
-          { label: 'Group', value: groupName },
-          { label: 'Was', value: oldRoleLabel },
-          { label: 'Now', value: newRoleLabel },
+        heading: c.text('heading'),
+        body: [
+          c.text('greeting', { firstName: memberFirstName || null }),
+          c.text('body', { group: groupName }),
         ],
-        ctas: [{ label: 'Open group', url: groupLink }],
+        details: [
+          { label: c.text('groupLabel'), value: groupName },
+          {
+            label: c.text('wasLabel'),
+            value: c.text('role', { role: oldRole }),
+          },
+          {
+            label: c.text('nowLabel'),
+            value: c.text('role', { role: newRole }),
+          },
+        ],
+        ctas: [{ label: c.text('cta'), url: groupLink }],
       },
     ],
   });

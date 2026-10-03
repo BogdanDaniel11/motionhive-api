@@ -10,6 +10,7 @@ import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { Sequelize } from 'sequelize-typescript';
 import { Op, Transaction } from 'sequelize';
 import { stripHtml } from '../../../common/utils/text.utils';
+import { apiError } from '../../../common/i18n';
 import { VenueService } from '../../venue/venue.service';
 import { NotificationService } from '../../notification/notification.service';
 import { NotificationOutbox } from '../../notification/notification-outbox';
@@ -140,9 +141,7 @@ export class SessionLifecycleService {
       // SCHEDULED. For scope=thisAndFuture/series we still need root
       // to be a meaningful anchor — accept SCHEDULED only.
       if (root.status !== SessionInstanceStatus.Scheduled) {
-        throw new BadRequestException(
-          'Root instance must be SCHEDULED to cancel.',
-        );
+        throw new BadRequestException(apiError('session.cannotCancel'));
       }
 
       const safeReason = dto.reason ? stripHtml(dto.reason, 200) || null : null;
@@ -305,9 +304,7 @@ export class SessionLifecycleService {
       this.assertOwner(instance, instructorId);
 
       if (instance.status !== SessionInstanceStatus.Scheduled) {
-        throw new BadRequestException(
-          'Only SCHEDULED instances can be rescheduled.',
-        );
+        throw new BadRequestException(apiError('session.cannotReschedule'));
       }
 
       const newStartAt = new Date(dto.newStartAt);
@@ -396,7 +393,9 @@ export class SessionLifecycleService {
       if (dto.capacityOverride !== undefined && dto.capacityOverride !== null) {
         if (dto.capacityOverride < instance.confirmedCount) {
           throw new BadRequestException(
-            `Capacity cannot be lowered below confirmedCount (${instance.confirmedCount}).`,
+            apiError('session.capacityBelowConfirmed', {
+              count: instance.confirmedCount,
+            }),
           );
         }
       }
@@ -479,16 +478,12 @@ export class SessionLifecycleService {
         (dto.audience === 'attended' || dto.audience === 'noshow') &&
         instance.startAt.getTime() > Date.now()
       ) {
-        throw new BadRequestException(
-          'Attendance-based audiences are only available after the session has started.',
-        );
+        throw new BadRequestException(apiError('session.audienceBeforeStart'));
       }
 
       const safeMessage = stripHtml(dto.message, 2000);
       if (!safeMessage) {
-        throw new BadRequestException(
-          'Message cannot be empty after sanitization.',
-        );
+        throw new BadRequestException(apiError('session.messageRequired'));
       }
 
       // Build the audience query. Skip CANCELLED/DECLINED in all cases —
@@ -518,7 +513,7 @@ export class SessionLifecycleService {
         case 'userIds':
           if (!dto.userIds || dto.userIds.length === 0) {
             throw new BadRequestException(
-              'userIds audience requires at least one userId.',
+              apiError('session.recipientsRequired'),
             );
           }
           where = { ...whereBase, userId: { [Op.in]: dto.userIds } };
@@ -563,14 +558,14 @@ export class SessionLifecycleService {
       lock: tx.LOCK.UPDATE,
       transaction: tx,
     });
-    if (!instance) throw new NotFoundException('Session instance not found');
+    if (!instance) throw new NotFoundException(apiError('session.notFound'));
     return instance;
   }
 
   private assertOwner(instance: SessionInstance, callerId: string): void {
     if (instance.instructorId !== callerId) {
       // 404 to avoid existence leak; matches the convention used elsewhere.
-      throw new NotFoundException('Session instance not found');
+      throw new NotFoundException(apiError('session.notFound'));
     }
   }
 

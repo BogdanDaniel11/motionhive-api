@@ -60,23 +60,6 @@ export {
 } from './group/role-changed.template';
 
 export {
-  sessionCancelledTemplate,
-  sessionCancelledTemplateText,
-} from './session/cancelled.template';
-export {
-  participantStatusTemplate,
-  participantStatusTemplateText,
-} from './session/participant-status.template';
-export {
-  sessionReminderTemplate,
-  sessionReminderTemplateText,
-} from './session/reminder.template';
-export {
-  sessionRescheduledTemplate,
-  sessionRescheduledTemplateText,
-} from './session/rescheduled.template';
-
-export {
   feedbackConfirmationTemplate,
   feedbackConfirmationTemplateText,
 } from './feedback/confirmation.template';

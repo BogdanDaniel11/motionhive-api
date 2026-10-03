@@ -19,11 +19,14 @@ import { StripeService } from './stripe.service';
 import { SubscriptionService } from './subscription.service';
 import { User } from '../../user/entities/user.entity';
 import { isStripeSupportedCountry } from '../../../common/constants/countries';
+import { NotificationService } from '../../notification/notification.service';
 import {
-  NotificationService,
-  NotificationType,
-} from '../../notification/notification.service';
+  stripeAccountDisconnectedForInstructor,
+  stripeAccountReadyForInstructor,
+  stripeAccountRestrictedForInstructor,
+} from '../notifications';
 import { NotificationOutbox } from '../../notification/notification-outbox';
+import { apiError } from '../../../common/i18n';
 
 /**
  * ConnectService
@@ -91,18 +94,14 @@ export class ConnectService {
 
     const user = await this.userModel.findByPk(userId, { transaction: tx });
     if (!user) {
-      throw new NotFoundException('User not found.');
+      throw new NotFoundException(apiError('payment.userNotFound'));
     }
     const countryCode = user.countryCode;
     if (!countryCode) {
-      throw new BadRequestException(
-        'Set your country on your profile before connecting payments.',
-      );
+      throw new BadRequestException(apiError('payment.countryRequired'));
     }
     if (!isStripeSupportedCountry(countryCode)) {
-      throw new BadRequestException(
-        `Stripe Connect is not available in ${countryCode} yet.`,
-      );
+      throw new BadRequestException(apiError('payment.countryNotSupported'));
     }
 
     const stripeAccount = await this.stripeService.stripe.accounts.create(
@@ -262,13 +261,11 @@ export class ConnectService {
       where: { userId },
     });
     if (!account) {
-      throw new NotFoundException(
-        'No Stripe Connect account found. Start onboarding first.',
-      );
+      throw new NotFoundException(apiError('payment.stripeAccountNotFound'));
     }
     if (!account.detailsSubmitted) {
       throw new UnprocessableEntityException(
-        'Complete Stripe onboarding before opening the Express Dashboard.',
+        apiError('payment.setupRequiredForDashboard'),
       );
     }
     const link = await this.stripeService.stripe.accounts.createLoginLink(
@@ -333,25 +330,9 @@ export class ConnectService {
     await local.save({ transaction: tx });
 
     if (!wasChargesEnabled && local.chargesEnabled) {
-      outbox?.add({
-        userId: local.userId,
-        type: NotificationType.STRIPE_ACCOUNT_READY,
-        title: 'Payments enabled',
-        body:
-          'Your Stripe account is verified. You can now issue invoices and ' +
-          'accept payments from clients.',
-        data: { screen: 'coaching/payments' },
-      });
+      outbox?.add(stripeAccountReadyForInstructor(local.userId));
     } else if (!wasRestricted && local.disabledReason) {
-      outbox?.add({
-        userId: local.userId,
-        type: NotificationType.STRIPE_ACCOUNT_RESTRICTED,
-        title: 'Action required on your Stripe account',
-        body:
-          'Stripe has flagged additional information is required to keep ' +
-          'your payouts active. Open the Express Dashboard to resolve it.',
-        data: { screen: 'coaching/payments' },
-      });
+      outbox?.add(stripeAccountRestrictedForInstructor(local.userId));
     }
   }
 
@@ -420,15 +401,8 @@ export class ConnectService {
     // Instructor notification — queued in the outbox so a rolled-back
     // webhook tx doesn't tell the user "your account is disconnected"
     // when in fact the disconnect failed mid-flight.
-    outbox?.add({
-      userId: instructorId,
-      type: NotificationType.STRIPE_ACCOUNT_RESTRICTED,
-      title: 'Stripe account disconnected',
-      body:
-        cancelled > 0
-          ? `Your Stripe account was disconnected. ${cancelled} active subscription${cancelled === 1 ? '' : 's'} will end at the current billing period — no future charges. You can reconnect from the payments page.`
-          : 'Your Stripe account was disconnected. You can reconnect from the payments page.',
-      data: { screen: 'coaching/payments' },
-    });
+    outbox?.add(
+      stripeAccountDisconnectedForInstructor(instructorId, cancelled),
+    );
   }
 }

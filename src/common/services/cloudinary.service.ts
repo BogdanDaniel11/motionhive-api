@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
+import { apiError } from '../i18n';
 
 /**
  * Cloudinary upload context. The combination produces a path like
@@ -83,9 +84,7 @@ export class CloudinaryService {
   assertOwnedUrls(urls: string[]): void {
     for (const url of urls) {
       if (!this.isOwnedUrl(url)) {
-        throw new BadRequestException(
-          'mediaUrls must be Cloudinary URLs returned by /posts/upload-image',
-        );
+        throw new BadRequestException(apiError('common.imageNotUploaded'));
       }
     }
   }
@@ -103,7 +102,7 @@ export class CloudinaryService {
     ctx: UploadContext,
   ): Promise<{ url: string; publicId: string }> {
     if (!file) {
-      throw new BadRequestException('No file provided');
+      throw new BadRequestException(apiError('common.noFile'));
     }
 
     if (!this.configured) {
@@ -153,7 +152,9 @@ export class CloudinaryService {
         `Cloudinary upload failed: ${message}`,
         JSON.stringify(error, Object.getOwnPropertyNames(error ?? {})),
       );
-      throw new InternalServerErrorException(`Image upload failed: ${message}`);
+      throw new InternalServerErrorException(
+        apiError('common.imageUploadFailed'),
+      );
     }
 
     return {

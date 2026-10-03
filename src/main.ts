@@ -1,5 +1,10 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger, LoggerService } from '@nestjs/common';
+import {
+  BadRequestException,
+  ValidationPipe,
+  Logger,
+  LoggerService,
+} from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
@@ -7,6 +12,7 @@ import { AppModule } from './app.module';
 import helmet from 'helmet';
 import * as express from 'express';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { validationErrorBody } from './common/i18n';
 import { setupBullBoard } from './modules/jobs/bull-board.setup';
 
 async function bootstrap() {
@@ -49,6 +55,10 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
       transform: true,
       transformOptions: { enableImplicitConversion: true },
+      // One translated sentence instead of class-validator's English
+      // property-by-property messages (those stay in `details`).
+      exceptionFactory: (errors) =>
+        new BadRequestException(validationErrorBody(errors)),
     }),
   );
 
@@ -243,6 +253,8 @@ A comprehensive REST API for managing fitness training sessions, trainers, and c
       'Authorization',
       'X-Request-ID',
       'Accept',
+      // The apps send their UI language; error messages answer in it.
+      'Accept-Language',
       'Origin',
     ],
     exposedHeaders: ['X-Request-ID'],

@@ -1,11 +1,14 @@
 import {
   IsEmail,
+  IsIn,
   IsNotEmpty,
   IsString,
   IsOptional,
   IsBoolean,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { SUPPORTED_LOCALES } from '../../../common/i18n';
+import type { Locale } from '../../../common/i18n';
 import { IsStrongPassword } from '../../../common/validators/strong-password.validator';
 import { Match } from '../../../common/validators/match.validator';
 
@@ -20,7 +23,7 @@ export class RegisterDto {
     example: 'user@example.com',
     description: 'User email address (must be unique)',
   })
-  @IsEmail()
+  @IsEmail({}, { message: 'errors.validation.invalidEmail' })
   @IsNotEmpty()
   email: string;
 
@@ -41,7 +44,9 @@ export class RegisterDto {
   })
   @IsString()
   @IsNotEmpty()
-  @Match('password', { message: 'Passwords do not match' })
+  @Match('password', {
+    message: 'errors.validation.passwordsDoNotMatch',
+  })
   confirmPassword: string;
 
   @ApiProperty({
@@ -77,4 +82,14 @@ export class RegisterDto {
   @IsBoolean()
   @IsOptional()
   isInstructor?: boolean;
+
+  @ApiPropertyOptional({
+    example: 'ro',
+    enum: SUPPORTED_LOCALES,
+    description:
+      'Language the person is using the app in. Stored on the account so notifications and emails match. Defaults to English.',
+  })
+  @IsIn(SUPPORTED_LOCALES)
+  @IsOptional()
+  language?: Locale;
 }

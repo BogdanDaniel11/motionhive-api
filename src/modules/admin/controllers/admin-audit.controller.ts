@@ -3,6 +3,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiTags } from '@nestjs/swagger';
 import { ApiEndpoint } from '../../../common/decorators/api-response.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
+import { RawContent } from '../../../common/decorators/raw-content.decorator';
 import { AdminDocs } from '../../../common/docs/admin.docs';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { AdminAuditService } from '../services/admin-audit.service';
@@ -10,6 +11,7 @@ import { AdminListDto } from '../dto/admin-list.dto';
 
 /** Read-only admin action audit log. ADMIN/SUPPORT+. */
 @ApiTags('Admin — Audit')
+@RawContent()
 @Controller('admin/audit')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('ADMIN', 'SUPER_ADMIN', 'SUPPORT')

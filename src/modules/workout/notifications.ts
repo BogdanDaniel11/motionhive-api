@@ -1,8 +1,12 @@
 import type { NotifyParams } from '../notification/notification.service';
 import { NotificationType } from '../notification/notification.service';
+import { day } from '../../common/i18n';
 
 /**
  * Notification builders for the workout module.
+ *
+ * Copy lives in the catalog (`notifications.workout.*` under
+ * src/common/i18n/catalog).
  *
  * Builders take primitives — never Sequelize entities — so the
  * outbox can safely flush after the assignment tx commits without
@@ -32,8 +36,14 @@ export function programAssignedForClient(input: {
   return {
     userId: input.clientId,
     type: NotificationType.PROGRAM_ASSIGNED,
-    title: 'New program assigned',
-    body: `${input.instructorName} assigned you "${input.programName}", starting ${input.startDate}.`,
+    message: {
+      key: 'workout.programAssigned',
+      params: {
+        coach: input.instructorName,
+        program: input.programName,
+        start: day(input.startDate),
+      },
+    },
     data: {
       screen: 'user/plans',
       entityId: input.assignmentId,
@@ -68,13 +78,17 @@ export function clientCompletedWorkoutForInstructor(input: {
   workoutName: string;
   setsCompleted: number;
 }): NotifyParams {
-  const sets =
-    input.setsCompleted === 1 ? '1 set' : `${input.setsCompleted} sets`;
   return {
     userId: input.instructorId,
     type: NotificationType.CLIENT_COMPLETED_WORKOUT,
-    title: `${input.clientName} finished a workout`,
-    body: `${input.workoutName} is logged, ${sets} completed.`,
+    message: {
+      key: 'workout.clientCompletedWorkout',
+      params: {
+        client: input.clientName,
+        workout: input.workoutName,
+        sets: input.setsCompleted,
+      },
+    },
     data: {
       screen: 'coaching/clients',
       entityId: input.clientId,
@@ -100,15 +114,17 @@ export function clientCompletedPlanForInstructor(input: {
   programName: string;
   workoutsCompleted: number;
 }): NotifyParams {
-  const sessions =
-    input.workoutsCompleted === 1
-      ? '1 session'
-      : `${input.workoutsCompleted} sessions`;
   return {
     userId: input.instructorId,
     type: NotificationType.CLIENT_COMPLETED_PLAN,
-    title: `${input.clientName} finished ${input.programName}`,
-    body: `All ${sessions} done. Time to debrief and set what comes next.`,
+    message: {
+      key: 'workout.clientCompletedPlan',
+      params: {
+        client: input.clientName,
+        program: input.programName,
+        count: input.workoutsCompleted,
+      },
+    },
     data: {
       screen: 'coaching/clients',
       entityId: input.clientId,

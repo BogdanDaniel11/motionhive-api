@@ -1,3 +1,4 @@
+import type { Locale } from '../../i18n';
 import { escapeHtml } from '../../utils/html.utils';
 import {
   baseLayout,
@@ -11,6 +12,7 @@ import {
   securityNote,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
 
 /**
  * Instructor-suggestion email. A MotionHive user thinks a particular
@@ -20,55 +22,67 @@ import {
  * Personalized: it names the user who recommended them so the
  * recipient sees it's not a cold pitch from MotionHive itself.
  */
-export function instructorSuggestionTemplate(params: {
+export interface InstructorSuggestionParams {
   coachName: string;
-  recommenderName: string;
+  /** `null` when the recommender has no name on file; the copy words that case. */
+  recommenderName: string | null;
   signUpLink: string;
   note?: string;
-}): string {
-  const { coachName, recommenderName, signUpLink, note } = params;
-  const safeCoach = escapeHtml(coachName);
-  const safeRecommender = escapeHtml(recommenderName);
-  const safeNote = escapeHtml(note);
+  /**
+   * The language to write to the coach in. They have no account yet,
+   * so this is the recommender's best guess (their own language).
+   */
+  locale: Locale;
+}
+
+export function instructorSuggestionTemplate(
+  params: InstructorSuggestionParams,
+): string {
+  const { coachName, recommenderName, signUpLink, note, locale } = params;
+  const c = emailCopy(locale, 'email.social.instructorSuggestion');
+  const recommender = recommenderName || null;
 
   const content = `
-    ${eyebrow('SUGGESTION', 'action')}
-    ${heading(`Hey ${safeCoach} — someone thinks you'd be a great fit here`)}
-    ${subheading(`${safeRecommender} suggested you join MotionHive`)}
-    ${personCard({ name: recommenderName, role: 'Suggested you' })}
-    ${paragraph(`<strong>${safeRecommender}</strong> uses MotionHive and recommended you as a coach worth having on the platform. We'd love to have you.`)}
-    ${note ? calloutBox('info', `<em>"${safeNote}"</em>`) : ''}
-    ${primaryButton('Set up your coach profile', signUpLink)}
-    ${securityNote("If this isn't for you, no worries — just ignore this email.")}
+    ${eyebrow(c.html('eyebrow'), 'action', locale)}
+    ${heading(c.html('heading', { coach: coachName }))}
+    ${subheading(c.html('subheading', { recommender }))}
+    ${personCard({
+      name: recommender ? escapeHtml(recommender) : c.html('anonymous'),
+      role: c.html('cardRole'),
+    })}
+    ${paragraph(c.html('body', { recommender }))}
+    ${note ? calloutBox('info', `<em>${c.html('note', { note })}</em>`) : ''}
+    ${primaryButton(c.html('cta'), signUpLink)}
+    ${securityNote(c.html('security'))}
   `;
 
   return baseLayout(content, {
-    preheader: `${recommenderName} suggested you join MotionHive`,
+    preheader: c.html('preheader', { recommender }),
     category: 'action',
+    locale,
   });
 }
 
-export function instructorSuggestionTemplateText(params: {
-  coachName: string;
-  recommenderName: string;
-  signUpLink: string;
-  note?: string;
-}): string {
-  const { coachName, recommenderName, signUpLink, note } = params;
+export function instructorSuggestionTemplateText(
+  params: InstructorSuggestionParams,
+): string {
+  const { coachName, recommenderName, signUpLink, note, locale } = params;
+  const c = emailCopy(locale, 'email.social.instructorSuggestion');
+  const recommender = recommenderName || null;
+
   return plainTextLayout({
-    preheader: `${recommenderName} suggested you join MotionHive`,
+    preheader: c.text('preheader', { recommender }),
+    locale,
     sections: [
       {
-        heading: `${coachName} — someone thinks you'd be a great fit here`,
+        heading: c.text('heading', { coach: coachName }),
         body: [
-          `${recommenderName} uses MotionHive and recommended you as a coach worth having on the platform. We'd love to have you.`,
-          ...(note ? [`Note: "${note}"`] : []),
+          c.text('body', { recommender }),
+          ...(note ? [c.text('noteText', { note })] : []),
         ],
-        ctas: [{ label: 'Set up your coach profile', url: signUpLink }],
+        ctas: [{ label: c.text('cta'), url: signUpLink }],
       },
-      {
-        body: ["If this isn't for you, no worries — just ignore this email."],
-      },
+      { body: [c.text('security')] },
     ],
   });
 }

@@ -1,4 +1,4 @@
-import { escapeHtml } from '../../utils/html.utils';
+import type { Locale } from '../../i18n';
 import {
   baseLayout,
   eyebrow,
@@ -9,6 +9,14 @@ import {
   securityNote,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
+
+export interface GroupMemberRemovedParams {
+  memberFirstName: string | null;
+  groupName: string;
+  groupsListLink: string;
+  locale: Locale;
+}
 
 /**
  * Sent to a member when they're removed from a group by the owner.
@@ -16,55 +24,47 @@ import {
  * No back-link to the group itself (they no longer have access);
  * point them at the groups list so they can find a new home.
  */
-export function groupMemberRemovedTemplate(params: {
-  memberFirstName: string | null;
-  groupName: string;
-  groupsListLink: string;
-}): string {
-  const { memberFirstName, groupName, groupsListLink } = params;
-  const safeFirst = escapeHtml(memberFirstName);
-  const safeGroup = escapeHtml(groupName);
-  const greeting = memberFirstName ? `Hi ${safeFirst},` : 'Hi there,';
+export function groupMemberRemovedTemplate(
+  params: GroupMemberRemovedParams,
+): string {
+  const { memberFirstName, groupName, groupsListLink, locale } = params;
+  const c = emailCopy(locale, 'email.group.memberRemoved');
 
   const content = `
-    ${eyebrow('UPDATE', 'update')}
-    ${paragraph(greeting)}
-    ${heading('You were removed from a group')}
-    ${subheading(`Your membership in ${safeGroup} ended`)}
-    ${paragraph(`You've been removed from <strong>${safeGroup}</strong>. You no longer have access to its sessions, members or posts.`)}
-    ${secondaryButton('Browse groups', groupsListLink)}
-    ${securityNote('If you think this was a mistake, reach out to the group owner directly to sort it out.')}
+    ${eyebrow('', 'update', locale)}
+    ${paragraph(c.html('greeting', { firstName: memberFirstName || null }))}
+    ${heading(c.html('heading'))}
+    ${subheading(c.html('subheading', { group: groupName }))}
+    ${paragraph(c.html('body', { group: groupName }))}
+    ${secondaryButton(c.html('cta'), groupsListLink)}
+    ${securityNote(c.html('note'))}
   `;
 
   return baseLayout(content, {
-    preheader: `You were removed from ${groupName}`,
+    preheader: c.html('preheader', { group: groupName }),
     category: 'update',
+    locale,
   });
 }
 
-export function groupMemberRemovedTemplateText(params: {
-  memberFirstName: string | null;
-  groupName: string;
-  groupsListLink: string;
-}): string {
-  const { memberFirstName, groupName, groupsListLink } = params;
-  const greeting = memberFirstName ? `Hi ${memberFirstName},` : 'Hi there,';
+export function groupMemberRemovedTemplateText(
+  params: GroupMemberRemovedParams,
+): string {
+  const { memberFirstName, groupName, groupsListLink, locale } = params;
+  const c = emailCopy(locale, 'email.group.memberRemoved');
   return plainTextLayout({
-    preheader: `You were removed from ${groupName}`,
+    preheader: c.text('preheader', { group: groupName }),
+    locale,
     sections: [
       {
-        heading: 'You were removed from a group',
+        heading: c.text('heading'),
         body: [
-          greeting,
-          `You've been removed from ${groupName}. You no longer have access to its sessions, members or posts.`,
+          c.text('greeting', { firstName: memberFirstName || null }),
+          c.text('body', { group: groupName }),
         ],
-        ctas: [{ label: 'Browse groups', url: groupsListLink }],
+        ctas: [{ label: c.text('cta'), url: groupsListLink }],
       },
-      {
-        body: [
-          'If you think this was a mistake, reach out to the group owner directly to sort it out.',
-        ],
-      },
+      { body: [c.text('note')] },
     ],
   });
 }

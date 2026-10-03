@@ -12,6 +12,7 @@ import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { Sequelize } from 'sequelize-typescript';
 import { Op, Transaction } from 'sequelize';
 import { stripHtml } from '../../../common/utils/text.utils';
+import { apiError } from '../../../common/i18n';
 import { User } from '../../user/entities/user.entity';
 import { NotificationService } from '../../notification/notification.service';
 import { NotificationOutbox } from '../../notification/notification-outbox';
@@ -32,6 +33,7 @@ import { PatchParticipantDto } from '../dto/patch-participant.dto';
 import {
   bookingApprovedForUser,
   bookingDeclinedForUser,
+  bookingDeclinedSessionFullForUser,
   bookingPromotedForUser,
   participantJoinedForInstructor,
   participantLeftForInstructor,
@@ -116,16 +118,16 @@ export class SessionBookingService {
 
       // Preconditions
       if (instance.instructorId === callerId) {
-        throw new BadRequestException('Cannot book your own session');
+        throw new BadRequestException(apiError('session.cannotBookOwn'));
       }
       if (instance.template.status !== SessionTemplateStatus.Active) {
-        throw new ConflictException('Session series is not active');
+        throw new ConflictException(apiError('session.seriesNotActive'));
       }
       if (instance.status !== SessionInstanceStatus.Scheduled) {
-        throw new ConflictException('Session is not bookable');
+        throw new ConflictException(apiError('session.notBookable'));
       }
       if (instance.startAt.getTime() <= Date.now()) {
-        throw new ConflictException('Session already started');
+        throw new ConflictException(apiError('session.alreadyStarted'));
       }
 
       // Access check (CLIENTS_ONLY / GROUP_ONLY)
@@ -136,7 +138,7 @@ export class SessionBookingService {
         tx,
       );
       if (!access.isEligible && !access.isParticipant) {
-        throw new ForbiddenException('Not eligible to book this session');
+        throw new ForbiddenException(apiError('session.notEligible'));
       }
 
       // Idempotency: any non-terminal row for this user blocks re-book.
@@ -149,8 +151,8 @@ export class SessionBookingService {
       });
       if (existing && !this.isTerminalStatus(existing.status)) {
         throw new ConflictException({
+          ...apiError('session.alreadyBooked', { status: existing.status }),
           code: 'ALREADY_BOOKED',
-          status: existing.status,
         });
       }
 
@@ -168,7 +170,10 @@ export class SessionBookingService {
       } else if (instance.template.waitlistEnabled) {
         targetStatus = SessionParticipantStatus.Waitlisted;
       } else {
-        throw new ConflictException('CAPACITY_HIT_NO_WAITLIST');
+        throw new ConflictException({
+          ...apiError('session.full'),
+          code: 'CAPACITY_HIT_NO_WAITLIST',
+        });
       }
 
       // Snapshot: terms-as-booked, immutable
@@ -264,7 +269,7 @@ export class SessionBookingService {
       // logic. Still, never auto-promote into a dead instance — that would
       // create a confirmed booking on a cancelled session.
       if (instance.status !== SessionInstanceStatus.Scheduled) {
-        throw new ConflictException('Session is not active');
+        throw new ConflictException(apiError('session.notActive'));
       }
 
       const participant = await this.participantModel.findOne({
@@ -273,10 +278,10 @@ export class SessionBookingService {
         transaction: tx,
       });
       if (!participant) {
-        throw new NotFoundException('Booking not found');
+        throw new NotFoundException(apiError('session.bookingNotFound'));
       }
       if (this.isTerminalStatus(participant.status)) {
-        throw new ConflictException('Booking already terminated');
+        throw new ConflictException(apiError('session.bookingAlreadyEnded'));
       }
 
       // Window math runs against the SNAPSHOT cutoff, not the live
@@ -357,7 +362,9 @@ export class SessionBookingService {
         !participant ||
         participant.status !== SessionParticipantStatus.PendingApproval
       ) {
-        throw new NotFoundException('Pending participant not found');
+        throw new NotFoundException(
+          apiError('session.pendingParticipantNotFound'),
+        );
       }
 
       // Capacity may have shifted while pending — re-check.
@@ -407,13 +414,7 @@ export class SessionBookingService {
       if (newStatus === SessionParticipantStatus.Confirmed) {
         outbox.add(bookingApprovedForUser(participant.userId, ref));
       } else if (newStatus === SessionParticipantStatus.Declined) {
-        outbox.add(
-          bookingDeclinedForUser(
-            participant.userId,
-            ref,
-            'Session is now full',
-          ),
-        );
+        outbox.add(bookingDeclinedSessionFullForUser(participant.userId, ref));
       }
       // (WAITLISTED case: notify with the standard booking-result message
       // since the user already had a pending row — they need to know
@@ -454,7 +455,9 @@ export class SessionBookingService {
         !participant ||
         participant.status !== SessionParticipantStatus.PendingApproval
       ) {
-        throw new NotFoundException('Pending participant not found');
+        throw new NotFoundException(
+          apiError('session.pendingParticipantNotFound'),
+        );
       }
 
       const safeReason = dto.reason ? stripHtml(dto.reason, 200) || null : null;
@@ -582,7 +585,7 @@ export class SessionBookingService {
         instance.startAt.getTime() > Date.now()
       ) {
         throw new BadRequestException(
-          'Attendance can only be set after the session has started.',
+          apiError('session.attendanceBeforeStart'),
         );
       }
 
@@ -592,7 +595,7 @@ export class SessionBookingService {
         transaction: tx,
       });
       if (!participant) {
-        throw new NotFoundException('Participant not found');
+        throw new NotFoundException(apiError('session.participantNotFound'));
       }
 
       const updates: Partial<SessionParticipant> = {};
@@ -626,14 +629,14 @@ export class SessionBookingService {
       lock: tx.LOCK.UPDATE,
       transaction: tx,
     });
-    if (!instance) throw new NotFoundException('Session instance not found');
+    if (!instance) throw new NotFoundException(apiError('session.notFound'));
     return instance;
   }
 
   /** Hide-on-mismatch ownership check (404, not 403). */
   private assertOwnerOrHide(instance: SessionInstance, callerId: string): void {
     if (instance.instructorId !== callerId) {
-      throw new NotFoundException('Session instance not found');
+      throw new NotFoundException(apiError('session.notFound'));
     }
   }
 

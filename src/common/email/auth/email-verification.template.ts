@@ -1,3 +1,4 @@
+import type { Locale } from '../../i18n';
 import {
   baseLayout,
   eyebrow,
@@ -9,46 +10,50 @@ import {
   securityNote,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
 
 /**
  * Sent right after sign-up so the user can verify their email and
  * unlock the rest of the platform. The link is single-use and
  * expires in 24h — the actual TTL lives in `UserService`.
  */
-export function emailVerificationTemplate(verifyLink: string): string {
+export function emailVerificationTemplate(
+  verifyLink: string,
+  locale: Locale,
+): string {
+  const c = emailCopy(locale, 'email.auth.verification');
   const content = `
-    ${eyebrow('ACTION REQUIRED', 'action')}
-    ${heading('Verify your email')}
-    ${subheading('One quick step to get started')}
-    ${paragraph('Thanks for signing up for MotionHive! Please verify your email address to unlock all features and start your fitness journey.')}
-    ${primaryButton('&#9989; Verify email address', verifyLink)}
-    ${expiryNote('This verification link expires in <strong>24 hours</strong>.')}
-    ${securityNote("If you didn't create a MotionHive account, you can safely ignore this email.")}
+    ${eyebrow('', 'action', locale)}
+    ${heading(c.html('heading'))}
+    ${subheading(c.html('subheading'))}
+    ${paragraph(c.html('body'))}
+    ${primaryButton(`&#9989; ${c.html('cta')}`, verifyLink)}
+    ${expiryNote(c.html('expiry'), locale)}
+    ${securityNote(c.html('security'))}
   `;
 
   return baseLayout(content, {
-    preheader: 'Verify your email to get started with MotionHive',
+    preheader: c.html('preheader'),
     category: 'action',
+    locale,
   });
 }
 
-export function emailVerificationTemplateText(verifyLink: string): string {
+export function emailVerificationTemplateText(
+  verifyLink: string,
+  locale: Locale,
+): string {
+  const c = emailCopy(locale, 'email.auth.verification');
   return plainTextLayout({
-    preheader: 'Verify your email to get started with MotionHive',
+    preheader: c.text('preheader'),
+    locale,
     sections: [
       {
-        heading: 'Verify your email',
-        body: [
-          'Thanks for signing up for MotionHive! Please verify your email address to unlock all features and start your fitness journey.',
-        ],
-        ctas: [{ label: 'Verify email address', url: verifyLink }],
+        heading: c.text('heading'),
+        body: [c.text('body')],
+        ctas: [{ label: c.text('cta'), url: verifyLink }],
       },
-      {
-        body: [
-          'This verification link expires in 24 hours.',
-          "If you didn't create a MotionHive account, you can safely ignore this email.",
-        ],
-      },
+      { body: [c.text('expiry'), c.text('security')] },
     ],
   });
 }

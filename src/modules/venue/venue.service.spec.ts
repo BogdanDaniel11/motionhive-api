@@ -106,7 +106,7 @@ describe('VenueService (smoke)', () => {
     it('rejects physical kinds without a city', async () => {
       await expect(
         service.create(userId, baseGymDto({ city: undefined })),
-      ).rejects.toThrow(/city is required/i);
+      ).rejects.toThrow(/add a city/i);
     });
 
     it('allows CLIENT_HOME with no address', async () => {
@@ -181,7 +181,7 @@ describe('VenueService (smoke)', () => {
     it('rejects a non-ISO countryCode', async () => {
       await expect(
         service.create(userId, baseGymDto({ countryCode: 'romania' })),
-      ).rejects.toThrow(/countryCode/i);
+      ).rejects.toThrow(/valid country/i);
     });
   });
 

@@ -51,7 +51,7 @@ describe('RolesGuard', () => {
     ]);
     await expect(
       new RolesGuard(reflector, roleService).canActivate(context),
-    ).rejects.toThrow('Access denied');
+    ).rejects.toThrow('Only coaches can do this.');
     expect(roleService.userHasAnyRole).not.toHaveBeenCalled();
   });
 
@@ -70,6 +70,6 @@ describe('RolesGuard', () => {
     const { reflector, context } = contextFor(undefined, ['INSTRUCTOR']);
     await expect(
       new RolesGuard(reflector, roleService).canActivate(context),
-    ).rejects.toThrow('User not authenticated');
+    ).rejects.toThrow('Please sign in again.');
   });
 });

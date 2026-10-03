@@ -26,7 +26,7 @@ import { OrphanedWebhookError } from './webhook-errors';
 import { EmailService } from '../../../common/services/email.service';
 import { NotificationService } from '../../notification/notification.service';
 import { NotificationOutbox } from '../../notification/notification-outbox';
-import { formatMoney } from '../../notification/format';
+import { apiError, toLocale } from '../../../common/i18n';
 import {
   invoiceCreatedForClient,
   invoicePaidForClient,
@@ -199,13 +199,11 @@ export class InvoiceService {
     const hasGuest = !!dto.guestEmail;
     if (hasClient === hasGuest) {
       throw new BadRequestException(
-        'Provide exactly one of clientUserId or guestEmail.',
+        apiError('payment.invoiceRecipientRequired'),
       );
     }
     if (hasGuest && !dto.guestName) {
-      throw new BadRequestException(
-        'guestName is required when guestEmail is set.',
-      );
+      throw new BadRequestException(apiError('payment.guestNameRequired'));
     }
 
     // Stripe rejects past timestamps for `due_date`. Reject here with a
@@ -220,12 +218,12 @@ export class InvoiceService {
     });
     if (!account) {
       throw new UnprocessableEntityException(
-        'Complete Stripe onboarding before issuing invoices.',
+        apiError('payment.setupRequiredForInvoices'),
       );
     }
     if (!account.chargesEnabled) {
       throw new UnprocessableEntityException(
-        'Stripe charges are not enabled on your account yet.',
+        apiError('payment.chargesNotEnabled'),
       );
     }
 
@@ -419,9 +417,7 @@ export class InvoiceService {
       dto.dueDate === undefined &&
       dto.description === undefined
     ) {
-      throw new BadRequestException(
-        'Provide at least one of lineItems, dueDate, or description.',
-      );
+      throw new BadRequestException(apiError('payment.invoiceNothingToUpdate'));
     }
 
     if (dto.dueDate) {
@@ -430,9 +426,7 @@ export class InvoiceService {
 
     const invoice = await this.requireOwnedInvoice(instructorId, invoiceId);
     if (invoice.status !== InvoiceStatus.DRAFT) {
-      throw new BadRequestException(
-        'Only draft invoices can be edited. Void this invoice and create a new one to make changes.',
-      );
+      throw new BadRequestException(apiError('payment.invoiceNotDraft'));
     }
     const stripeInvoiceId = this.requireStripeInvoiceId(invoice);
 
@@ -443,7 +437,7 @@ export class InvoiceService {
     });
     if (!account) {
       throw new UnprocessableEntityException(
-        'Stripe account is no longer available for this instructor.',
+        apiError('payment.stripeAccountDisconnected'),
       );
     }
     const feeBps = account.platformFeeBps ?? 0;
@@ -626,9 +620,11 @@ export class InvoiceService {
     userId: string,
   ): Promise<InvoiceResponse> {
     const invoice = await this.invoiceModel.findByPk(invoiceId);
-    if (!invoice) throw new NotFoundException('Invoice not found.');
+    if (!invoice) {
+      throw new NotFoundException(apiError('payment.invoiceNotFound'));
+    }
     if (invoice.instructorId !== userId && invoice.clientId !== userId) {
-      throw new ForbiddenException('You cannot access this invoice.');
+      throw new ForbiddenException(apiError('payment.invoiceNoAccess'));
     }
     return this.enrich(invoice);
   }
@@ -653,9 +649,11 @@ export class InvoiceService {
     }>
   > {
     const invoice = await this.invoiceModel.findByPk(invoiceId);
-    if (!invoice) throw new NotFoundException('Invoice not found.');
+    if (!invoice) {
+      throw new NotFoundException(apiError('payment.invoiceNotFound'));
+    }
     if (invoice.instructorId !== userId && invoice.clientId !== userId) {
-      throw new ForbiddenException('You cannot access this invoice.');
+      throw new ForbiddenException(apiError('payment.invoiceNoAccess'));
     }
     if (!invoice.stripeInvoiceId) return [];
 
@@ -717,7 +715,7 @@ export class InvoiceService {
       invoice.status !== InvoiceStatus.OPEN
     ) {
       throw new BadRequestException(
-        `Cannot send an invoice in status ${invoice.status}.`,
+        apiError('payment.invoiceCannotSend', { status: invoice.status }),
       );
     }
 
@@ -755,9 +753,7 @@ export class InvoiceService {
         // Shouldn't happen — finalization always returns a hosted URL —
         // but refuse to send an empty-link email rather than silently
         // shipping a broken one.
-        throw new BadRequestException(
-          'Invoice is not ready to send (hosted URL missing).',
-        );
+        throw new BadRequestException(apiError('payment.invoiceNotReady'));
       }
       const instructor = (await this.sequelize.models.User.findByPk(
         instructorId,
@@ -766,25 +762,27 @@ export class InvoiceService {
         [instructor?.firstName, instructor?.lastName]
           .filter(Boolean)
           .join(' ')
-          .trim() || 'Your instructor';
-      const amountLabel = formatMoney(invoice.amountDueCents, invoice.currency);
-      const dueDateLabel = invoice.dueDate
-        ? new Date(invoice.dueDate).toLocaleDateString('en-GB', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
-          })
+          .trim() || null;
+      // The override address belongs to no account we can look up, so
+      // write in the client's language when the invoice has a client,
+      // and the instructor's otherwise.
+      const client = invoice.clientId
+        ? ((await this.sequelize.models.User.findByPk(invoice.clientId, {
+            attributes: ['language'],
+          })) as User | null)
         : null;
 
       await this.emailService.sendInvoiceEmail({
         to: overrideEmail as string,
         instructorName,
-        amountLabel,
-        dueDateLabel,
+        amountCents: invoice.amountDueCents,
+        currency: invoice.currency,
+        dueDate: invoice.dueDate,
         invoiceNumber: invoice.number,
         hostedInvoiceUrl: invoice.hostedInvoiceUrl,
         invoicePdfUrl: invoice.invoicePdf,
         recipientName: null,
+        locale: toLocale(client?.language ?? instructor?.language),
       });
       this.logger.log(
         `Invoice ${invoice.id} delivered to override address ${overrideEmail} (on-file: ${onFileEmail ?? 'none'})`,
@@ -845,9 +843,7 @@ export class InvoiceService {
   ): Promise<InvoiceResponse> {
     const invoice = await this.requireOwnedInvoice(instructorId, invoiceId);
     if (invoice.status === InvoiceStatus.PAID) {
-      throw new BadRequestException(
-        'Cannot void a paid invoice. Issue a refund instead.',
-      );
+      throw new BadRequestException(apiError('payment.cannotVoidPaid'));
     }
     if (invoice.status === InvoiceStatus.VOID) return this.enrich(invoice);
 
@@ -890,23 +886,18 @@ export class InvoiceService {
   ): Promise<InvoiceResponse> {
     const invoice = await this.requireOwnedInvoice(instructorId, invoiceId);
     if (invoice.status === InvoiceStatus.PAID) {
-      throw new ConflictException('Invoice already marked as paid.');
+      throw new ConflictException(apiError('payment.invoiceAlreadyPaid'));
     }
     if (
       invoice.status !== InvoiceStatus.OPEN &&
       invoice.status !== InvoiceStatus.DRAFT
     ) {
       throw new BadRequestException(
-        `Cannot mark-paid an invoice in status ${invoice.status}.`,
+        apiError('payment.invoiceCannotMarkPaid', { status: invoice.status }),
       );
     }
     if (invoice.requiresImmediateAccessWaiver && !invoice.waiverAcceptedAt) {
-      throw new BadRequestException(
-        'This invoice requires the client to accept the 14-day cooling-off ' +
-          'waiver before it can be marked paid. Either clear the waiver ' +
-          'requirement on the invoice or have the client pay via the ' +
-          'normal checkout flow.',
-      );
+      throw new BadRequestException(apiError('payment.markPaidNeedsWaiver'));
     }
 
     const stripeInvoiceId = this.requireStripeInvoiceId(invoice);
@@ -948,11 +939,16 @@ export class InvoiceService {
           },
         );
       } catch (err) {
-        // Surface Stripe's reason as a 422 rather than an opaque 500.
+        // Surface a 422 rather than an opaque 500. Stripe's own reason is
+        // English and technical, so it goes to the log, not the person.
+        this.logger.warn(
+          `Stripe could not mark invoice ${invoice.id} paid: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+          'InvoiceService',
+        );
         throw new UnprocessableEntityException(
-          err instanceof Error
-            ? `Stripe could not mark this invoice paid: ${err.message}`
-            : 'Stripe could not mark this invoice paid.',
+          apiError('payment.markPaidFailed'),
         );
       }
     }
@@ -1126,9 +1122,11 @@ export class InvoiceService {
     invoiceId: string,
   ): Promise<Invoice> {
     const invoice = await this.invoiceModel.findByPk(invoiceId);
-    if (!invoice) throw new NotFoundException('Invoice not found.');
+    if (!invoice) {
+      throw new NotFoundException(apiError('payment.invoiceNotFound'));
+    }
     if (invoice.instructorId !== instructorId) {
-      throw new ForbiddenException('You do not own this invoice.');
+      throw new ForbiddenException(apiError('payment.invoiceNoAccess'));
     }
     return invoice;
   }
@@ -1251,7 +1249,7 @@ export class InvoiceService {
   private assertDueDateNotPast(dueDateInput: string): void {
     const due = new Date(dueDateInput);
     if (Number.isNaN(due.getTime())) {
-      throw new BadRequestException('Invalid due date.');
+      throw new BadRequestException(apiError('payment.invalidDueDate'));
     }
     const now = new Date();
     const todayUtcMs = Date.UTC(
@@ -1260,7 +1258,7 @@ export class InvoiceService {
       now.getUTCDate(),
     );
     if (due.getTime() < todayUtcMs) {
-      throw new BadRequestException('Due date cannot be in the past.');
+      throw new BadRequestException(apiError('payment.dueDateInPast'));
     }
   }
 
@@ -1274,9 +1272,7 @@ export class InvoiceService {
    */
   private requireStripeInvoiceId(invoice: Invoice): string {
     if (!invoice.stripeInvoiceId) {
-      throw new BadRequestException(
-        'Invoice has no Stripe record — it was never successfully created on Stripe.',
-      );
+      throw new BadRequestException(apiError('payment.invoiceNotLinked'));
     }
     return invoice.stripeInvoiceId;
   }

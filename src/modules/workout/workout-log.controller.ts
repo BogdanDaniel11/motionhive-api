@@ -17,6 +17,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 
 import { PaginationDto } from '../../common/dto/pagination.dto';
+import { requestLocale } from '../../common/i18n';
 import { ListWorkoutLogsQueryDto } from './dto/list-workout-logs.query.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -52,7 +53,7 @@ export class WorkoutLogController {
     @Request() req: AuthenticatedRequest,
     @Body() dto: StartWorkoutDto,
   ) {
-    return this.workoutLogService.start(req.user.id, dto);
+    return this.workoutLogService.start(req.user.id, dto, requestLocale(req));
   }
 
   @Patch('workout-logs/:id/sets/:setId')
@@ -79,6 +80,7 @@ export class WorkoutLogController {
       dto.exerciseId,
       req.user.id,
       dto.defaultSets,
+      requestLocale(req),
     );
   }
 
@@ -123,6 +125,7 @@ export class WorkoutLogController {
       exerciseId,
       req.user.id,
       dto.exerciseId,
+      requestLocale(req),
     );
   }
 
@@ -222,7 +225,7 @@ export class WorkoutLogController {
     @Request() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.workoutLogService.findById(id, req.user.id);
+    return this.workoutLogService.findById(id, req.user.id, requestLocale(req));
   }
 
   // ── 1RM ──────────────────────────────────────────────────────────

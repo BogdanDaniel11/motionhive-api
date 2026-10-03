@@ -1,0 +1,53 @@
+{
+  "abdominals": {
+    "commonName": "Abdomen"
+  },
+  "abductors": {
+    "commonName": "Abductori"
+  },
+  "adductors": {
+    "commonName": "Adductori"
+  },
+  "biceps": {
+    "commonName": "Biceps"
+  },
+  "calves": {
+    "commonName": "Gambe"
+  },
+  "chest": {
+    "commonName": "Piept"
+  },
+  "forearms": {
+    "commonName": "Antebrațe"
+  },
+  "glutes": {
+    "commonName": "Fesieri"
+  },
+  "hamstrings": {
+    "commonName": "Femurali"
+  },
+  "lats": {
+    "commonName": "Dorsali"
+  },
+  "lower_back": {
+    "commonName": "Lombari"
+  },
+  "middle_back": {
+    "commonName": "Mijlocul spatelui"
+  },
+  "neck": {
+    "commonName": "Gât"
+  },
+  "quadriceps": {
+    "commonName": "Cvadricepși"
+  },
+  "shoulders": {
+    "commonName": "Umeri"
+  },
+  "traps": {
+    "commonName": "Trapez"
+  },
+  "triceps": {
+    "commonName": "Triceps"
+  }
+}

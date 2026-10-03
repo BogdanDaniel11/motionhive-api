@@ -16,11 +16,9 @@ export class UpdateHandleDto {
   @Transform(({ value }) =>
     typeof value === 'string' ? value.trim().toLowerCase() : value,
   )
-  @Length(3, 40)
+  @Length(3, 40, { message: 'errors.validation.invalidHandle' })
   @Matches(/^[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?$/, {
-    message:
-      'handle must be 3-40 chars of lowercase letters, digits, "_" or "-", ' +
-      'starting and ending alphanumeric',
+    message: 'errors.validation.invalidHandle',
   })
   handle!: string;
 }

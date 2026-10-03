@@ -7,6 +7,7 @@ import {
   UpdatedAt,
   HasMany,
 } from 'sequelize-typescript';
+import type { MessageParams } from '../../../common/i18n';
 import { NotificationReceipt } from './notification-receipt.entity';
 
 /**
@@ -87,6 +88,25 @@ export class Notification extends Model {
     allowNull: false,
   })
   declare body: string;
+
+  /**
+   * Which catalog message this is (`<module>.<name>` under
+   * `notifications` in src/common/i18n/catalog). With `messageParams`
+   * it lets the API render the text in each reader's language;
+   * `title` / `body` above hold the English rendering as the fallback.
+   * NULL on rows written before migration 062.
+   */
+  @Column({
+    type: DataType.STRING(120),
+    allowNull: true,
+  })
+  declare messageKey: string | null;
+
+  @Column({
+    type: DataType.JSONB,
+    allowNull: true,
+  })
+  declare messageParams: MessageParams | null;
 
   @Column({
     type: DataType.JSONB,

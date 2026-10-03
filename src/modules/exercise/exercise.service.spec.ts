@@ -73,7 +73,11 @@ describe('ExerciseService (smoke — not exhaustive)', () => {
     notify: jest.fn().mockResolvedValue(undefined),
   };
 
-  const meInstructor = { userId: 'me', isInstructor: true } as const;
+  const meInstructor = {
+    userId: 'me',
+    isInstructor: true,
+    locale: 'en',
+  } as const;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -120,6 +124,7 @@ describe('ExerciseService (smoke — not exhaustive)', () => {
       const result = await service.canClientBrowseCatalog({
         userId: 'u',
         isInstructor: false,
+        locale: 'en',
       });
       expect(result).toBe(true);
       // The gate now no-ops so we shouldn't hit the DB for it.
@@ -129,7 +134,11 @@ describe('ExerciseService (smoke — not exhaustive)', () => {
 
     it('assertClientCanBrowse is now a no-op', async () => {
       await expect(
-        service.assertClientCanBrowse({ userId: 'u', isInstructor: false }),
+        service.assertClientCanBrowse({
+          userId: 'u',
+          isInstructor: false,
+          locale: 'en',
+        }),
       ).resolves.toBeUndefined();
     });
   });
@@ -169,7 +178,7 @@ describe('ExerciseService (smoke — not exhaustive)', () => {
           },
           'owner-1',
         ),
-      ).rejects.toThrow(/PRIMARY muscles/);
+      ).rejects.toThrow(/primary muscles/);
     });
 
     it('rejects duplicate (muscle, role) pairs', async () => {
@@ -184,7 +193,7 @@ describe('ExerciseService (smoke — not exhaustive)', () => {
           },
           'owner-1',
         ),
-      ).rejects.toThrow(/Duplicate/);
+      ).rejects.toThrow(/listed twice/);
     });
   });
 
@@ -311,6 +320,7 @@ describe('ExerciseService (smoke — not exhaustive)', () => {
       const result = await service.findById('e-sys', {
         userId: 'me',
         isInstructor: false,
+        locale: 'en',
       });
       expect(result).toBe(sys);
     });
@@ -417,7 +427,9 @@ describe('ExerciseService (smoke — not exhaustive)', () => {
       // stale local source.forkCount (41).
       expect(notificationService.notify).toHaveBeenCalledWith(
         expect.objectContaining({
-          body: expect.stringContaining('42 forks'),
+          message: expect.objectContaining({
+            params: expect.objectContaining({ count: 42 }),
+          }),
         }),
       );
     });
