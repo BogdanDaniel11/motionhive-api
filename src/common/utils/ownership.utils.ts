@@ -1,10 +1,12 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { apiError, ApiErrorBody } from '../i18n';
 
 export type OwnershipMismatchPolicy = 'forbid' | 'hide';
 
 export interface AssertOwnedOptions {
-  notFoundMessage?: string;
-  forbiddenMessage?: string;
+  /** Prefer a catalog message: `apiError('venue.notFound')`. */
+  notFoundMessage?: string | ApiErrorBody;
+  forbiddenMessage?: string | ApiErrorBody;
   /**
    * What to throw when the entity exists but the principal does not own it.
    * - `'forbid'` (default): throw ForbiddenException — the dominant shape.
@@ -51,8 +53,8 @@ export function assertOwned<T>(
   opts: AssertOwnedOptions = {},
 ): asserts entity is T {
   const {
-    notFoundMessage = 'Resource not found.',
-    forbiddenMessage = 'You do not own this resource.',
+    notFoundMessage = apiError('common.resourceNotFound'),
+    forbiddenMessage = apiError('common.notOwner'),
     onMismatch = 'forbid',
   } = opts;
 

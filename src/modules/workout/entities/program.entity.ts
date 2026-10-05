@@ -11,6 +11,7 @@ import {
   UpdatedAt,
   DeletedAt,
 } from 'sequelize-typescript';
+import type { ContentTranslations } from '../../../common/i18n';
 import { User } from '../../user/entities/user.entity';
 import { ProgramWorkout } from './program-workout.entity';
 import { ProgramKind, ProgramSource, ProgramStatus } from './workout.enums';
@@ -121,6 +122,14 @@ export class Program extends Model {
   /** E.g. ["hypertrophy","fat_loss"]. Free shape for V1. */
   @Column({ type: DataType.JSONB, allowNull: true })
   declare goalTags: string[] | null;
+
+  /**
+   * Other languages of name, description, folder, on MotionHive's own rows only
+   * (migration 063). Swapped in per reader by ContentLocaleInterceptor;
+   * never accepted from a request.
+   */
+  @Column({ type: DataType.JSONB, allowNull: true })
+  declare translations: ContentTranslations | null;
 
   @CreatedAt declare createdAt: Date;
   @UpdatedAt declare updatedAt: Date;

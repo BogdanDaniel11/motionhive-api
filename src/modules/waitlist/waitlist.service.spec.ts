@@ -116,9 +116,11 @@ describe('WaitlistService', () => {
         role: WaitlistRole.INSTRUCTOR,
         source: 'blog-cta',
       });
+      // No `language` on the request: the confirmation is in English.
       expect(emailService.sendWaitlistConfirmation).toHaveBeenCalledWith(
         'jane@example.com',
         'Jane',
+        'en',
       );
       expect(out).toBe(created);
     });

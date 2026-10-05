@@ -55,6 +55,7 @@ import {
   DecideJoinRequestDto,
   JoinRequestDecision,
 } from './dto/decide-join-request.dto';
+import { apiError, toLocale } from '../../common/i18n';
 
 /**
  * Group Service
@@ -248,7 +249,7 @@ export class GroupService {
     }
 
     // Should never reach here, but TypeScript needs it
-    throw new BadRequestException('Failed to generate unique slug');
+    throw new BadRequestException(apiError('group.createFailed'));
   }
 
   /**
@@ -295,16 +296,47 @@ export class GroupService {
    *
    * Uses a targeted membership check instead of loading all members.
    */
-  async getById(groupId: string, userId: string): Promise<Group> {
-    const group = await this.groupModel.findByPk(groupId);
+  /**
+   * One group, as the caller sees it.
+   *
+   * `myRole` rides along because the membership row is already loaded to
+   * authorise the read — the client would otherwise have to derive it by
+   * searching the paginated member list, which silently misreads a
+   * moderator who sits past the first page as a non-member and strips
+   * their controls. The role is authoritative here and costs nothing.
+   */
+  async getById(
+    groupId: string,
+    userId: string,
+  ): Promise<Group & { myRole: GroupMemberRole; memberCount: number }> {
+    const group = await this.groupModel.findByPk(groupId, {
+      // Every list endpoint attaches this; the single-group read did not, so
+      // a detail screen rendered "0 members" for a group the list it came
+      // from had just counted correctly.
+      attributes: {
+        include: [
+          [
+            literal(
+              '(SELECT COUNT(*)::int FROM group_member WHERE group_member.group_id = "Group"."id" AND group_member.left_at IS NULL)',
+            ),
+            'memberCount',
+          ],
+        ],
+      },
+    });
 
     if (!group) {
-      throw new NotFoundException('Group not found');
+      throw new NotFoundException(apiError('group.notFound'));
     }
 
-    await this.assertMember(groupId, userId);
+    const member = await this.assertMember(groupId, userId);
 
-    return group;
+    // `toJSON` first: spreading a Sequelize instance copies its internals,
+    // not its columns.
+    return { ...group.toJSON(), myRole: member.role } as Group & {
+      myRole: GroupMemberRole;
+      memberCount: number;
+    };
   }
 
   /**
@@ -386,13 +418,11 @@ export class GroupService {
     });
 
     if (!member) {
-      throw new NotFoundException('You are not a member of this group');
+      throw new NotFoundException(apiError('group.notMember'));
     }
 
     if (member.isOwner) {
-      throw new ForbiddenException(
-        'Group owner cannot leave. Transfer ownership first or delete the group.',
-      );
+      throw new ForbiddenException(apiError('group.ownerCannotLeave'));
     }
 
     await member.update({ leftAt: new Date() });
@@ -410,7 +440,7 @@ export class GroupService {
         attributes: ['firstName', 'lastName'],
       }),
       this.userModel.findByPk(group.instructorId, {
-        attributes: ['email', 'firstName'],
+        attributes: ['email', 'firstName', 'language'],
       }),
     ]);
     const memberName =
@@ -437,9 +467,10 @@ export class GroupService {
         .sendGroupMemberLeftEmail({
           to: owner.email,
           ownerFirstName: owner.firstName,
-          memberName: memberName ?? 'A member',
+          memberName,
           groupName: group.name,
           groupId: group.id,
+          locale: toLocale(owner.language),
         })
         .catch((err: Error) =>
           this.logger.error(
@@ -474,7 +505,7 @@ export class GroupService {
     // First, get the group to know the instructor
     const group = await this.groupModel.findByPk(groupId);
     if (!group) {
-      throw new NotFoundException('Group not found');
+      throw new NotFoundException(apiError('group.notFound'));
     }
 
     const { rows: members, count: totalItems } =
@@ -545,7 +576,7 @@ export class GroupService {
     });
 
     if (!member) {
-      throw new NotFoundException('You are not a member of this group');
+      throw new NotFoundException(apiError('group.notMember'));
     }
 
     await member.update(dto);
@@ -569,11 +600,11 @@ export class GroupService {
     });
 
     if (!member) {
-      throw new NotFoundException('Member not found');
+      throw new NotFoundException(apiError('group.memberNotFound'));
     }
 
     if (member.isOwner) {
-      throw new ForbiddenException('Cannot remove the group owner');
+      throw new ForbiddenException(apiError('group.cannotRemoveOwner'));
     }
 
     await member.update({ leftAt: new Date() });
@@ -595,7 +626,7 @@ export class GroupService {
     // Email the removed member so they know they lost access. Best-
     // effort; transport failures must not turn the 200 into a 500.
     const removedUser = await this.userModel.findByPk(memberId, {
-      attributes: ['email', 'firstName'],
+      attributes: ['email', 'firstName', 'language'],
     });
     if (removedUser?.email) {
       this.emailService
@@ -603,6 +634,7 @@ export class GroupService {
           to: removedUser.email,
           memberFirstName: removedUser.firstName,
           groupName: group.name,
+          locale: toLocale(removedUser.language),
         })
         .catch((err: Error) =>
           this.logger.error(
@@ -817,7 +849,7 @@ export class GroupService {
     });
 
     if (!group) {
-      throw new NotFoundException('Group not found or is not public');
+      throw new NotFoundException(apiError('group.notPublic'));
     }
 
     // Get the instructor (owner)
@@ -948,19 +980,15 @@ export class GroupService {
     const group = await this.groupModel.findByPk(groupId);
 
     if (!group || !group.isActive) {
-      throw new NotFoundException('Group not found');
+      throw new NotFoundException(apiError('group.notFound'));
     }
 
     if (!group.isPublic) {
-      throw new ForbiddenException(
-        'This group is not public. You need an invitation to join.',
-      );
+      throw new ForbiddenException(apiError('group.invitationRequired'));
     }
 
     if (group.joinPolicy === JoinPolicy.INVITE_ONLY) {
-      throw new ForbiddenException(
-        'This group requires an invitation to join.',
-      );
+      throw new ForbiddenException(apiError('group.inviteOnly'));
     }
 
     // Look up *any* existing membership row, including ones the user
@@ -971,7 +999,7 @@ export class GroupService {
       where: { groupId, userId },
     });
     if (existingMember && existingMember.leftAt === null) {
-      throw new BadRequestException('You are already a member of this group');
+      throw new BadRequestException(apiError('group.alreadyMember'));
     }
 
     if (group.joinPolicy === JoinPolicy.OPEN) {
@@ -1044,17 +1072,18 @@ export class GroupService {
     // Email the owner so they actually see the request (in-app bells
     // are easy to miss). Best-effort.
     const owner = await this.userModel.findByPk(group.instructorId, {
-      attributes: ['email', 'firstName'],
+      attributes: ['email', 'firstName', 'language'],
     });
     if (owner?.email) {
       this.emailService
         .sendGroupJoinRequestReceivedEmail({
           to: owner.email,
           ownerFirstName: owner.firstName,
-          requesterName: requesterName ?? 'Someone',
+          requesterName,
           groupName: group.name,
           groupId: group.id,
           requestId: request.id,
+          locale: toLocale(owner.language),
         })
         .catch((err: Error) =>
           this.logger.error(
@@ -1124,11 +1153,11 @@ export class GroupService {
       where: { id: requestId, groupId },
     });
     if (!request) {
-      throw new NotFoundException('Join request not found');
+      throw new NotFoundException(apiError('group.joinRequestNotFound'));
     }
     if (request.status !== GroupJoinRequestStatus.PENDING) {
       throw new BadRequestException(
-        `This request is already ${request.status.toLowerCase()}`,
+        apiError('group.joinRequestAlreadyDecided', { status: request.status }),
       );
     }
 
@@ -1206,7 +1235,7 @@ export class GroupService {
     // Email the requester so they don't have to keep checking the
     // bell. Best-effort.
     const requester = await this.userModel.findByPk(request.userId, {
-      attributes: ['email', 'firstName'],
+      attributes: ['email', 'firstName', 'language'],
     });
     if (requester?.email) {
       this.emailService
@@ -1216,6 +1245,7 @@ export class GroupService {
           requesterFirstName: requester.firstName,
           groupName: group.name,
           groupId: group.id,
+          locale: toLocale(requester.language),
         })
         .catch((err: Error) =>
           this.logger.error(
@@ -1358,7 +1388,7 @@ export class GroupService {
     });
 
     if (!group || !group.isActive) {
-      throw new NotFoundException('Invalid or expired join link');
+      throw new NotFoundException(apiError('group.joinLinkInvalid'));
     }
 
     // Check expiry
@@ -1366,9 +1396,7 @@ export class GroupService {
       group.joinTokenExpiresAt &&
       new Date() > new Date(group.joinTokenExpiresAt)
     ) {
-      throw new BadRequestException(
-        'This join link has expired. Ask the group owner for a new one.',
-      );
+      throw new BadRequestException(apiError('group.joinLinkExpired'));
     }
 
     // Look up *any* existing membership row, including ones the user
@@ -1380,7 +1408,7 @@ export class GroupService {
     });
 
     if (existing && existing.leftAt === null) {
-      throw new BadRequestException('You are already a member of this group');
+      throw new BadRequestException(apiError('group.alreadyMember'));
     }
 
     let member: GroupMember;
@@ -1536,7 +1564,7 @@ export class GroupService {
     const group = await this.assertOwnerAndGet(groupId, currentOwnerId);
 
     if (currentOwnerId === newOwnerId) {
-      throw new BadRequestException('You are already the owner');
+      throw new BadRequestException(apiError('group.alreadyOwner'));
     }
 
     const newOwnerMember = await this.memberModel.findOne({
@@ -1544,9 +1572,7 @@ export class GroupService {
     });
 
     if (!newOwnerMember) {
-      throw new BadRequestException(
-        'New owner must be an active member of the group',
-      );
+      throw new BadRequestException(apiError('group.newOwnerNotMember'));
     }
 
     const sequelize = this.groupModel.sequelize!;
@@ -1599,22 +1625,22 @@ export class GroupService {
     const groupRef = { id: group.id, name: group.name };
     const [newOwnerUser, oldOwnerUser] = await Promise.all([
       this.userModel.findByPk(newOwnerId, {
-        attributes: ['email', 'firstName', 'lastName'],
+        attributes: ['email', 'firstName', 'lastName', 'language'],
       }),
       this.userModel.findByPk(currentOwnerId, {
-        attributes: ['email', 'firstName', 'lastName'],
+        attributes: ['email', 'firstName', 'lastName', 'language'],
       }),
     ]);
     const newOwnerName =
       [newOwnerUser?.firstName, newOwnerUser?.lastName]
         .filter(Boolean)
         .join(' ')
-        .trim() || 'The new owner';
+        .trim() || null;
     const oldOwnerName =
       [oldOwnerUser?.firstName, oldOwnerUser?.lastName]
         .filter(Boolean)
         .join(' ')
-        .trim() || 'The previous owner';
+        .trim() || null;
 
     await Promise.all([
       this.notificationService
@@ -1642,6 +1668,7 @@ export class GroupService {
               otherPartyName: oldOwnerName,
               groupName: group.name,
               groupId: group.id,
+              locale: toLocale(newOwnerUser.language),
             })
             .catch((err: Error) =>
               this.logger.error(
@@ -1659,6 +1686,7 @@ export class GroupService {
               otherPartyName: newOwnerName,
               groupName: group.name,
               groupId: group.id,
+              locale: toLocale(oldOwnerUser.language),
             })
             .catch((err: Error) =>
               this.logger.error(
@@ -1751,7 +1779,7 @@ export class GroupService {
    */
   async assertOwnerAndGet(groupId: string, userId: string): Promise<Group> {
     const group = await this.groupModel.findByPk(groupId);
-    if (!group) throw new NotFoundException('Group not found');
+    if (!group) throw new NotFoundException(apiError('group.notFound'));
     await this.assertOwner(groupId, userId);
     return group;
   }
@@ -1765,7 +1793,7 @@ export class GroupService {
     });
 
     if (!member) {
-      throw new ForbiddenException('You are not a member of this group');
+      throw new ForbiddenException(apiError('group.notMember'));
     }
 
     return member;
@@ -1775,7 +1803,7 @@ export class GroupService {
     const member = await this.assertMember(groupId, userId);
 
     if (!member.isOwner) {
-      throw new ForbiddenException('Only the group owner can do this');
+      throw new ForbiddenException(apiError('group.ownerOnly'));
     }
   }
 
@@ -1796,21 +1824,17 @@ export class GroupService {
     const group = await this.assertOwnerAndGet(groupId, requestingUserId);
 
     if (requestingUserId === targetUserId) {
-      throw new BadRequestException(
-        'Use transfer ownership to change your own role',
-      );
+      throw new BadRequestException(apiError('group.cannotChangeOwnRole'));
     }
 
     const target = await this.memberModel.findOne({
       where: { groupId, userId: targetUserId, leftAt: null },
     });
     if (!target) {
-      throw new NotFoundException('Target user is not a member of this group');
+      throw new NotFoundException(apiError('group.targetNotMember'));
     }
     if (target.role === GroupMemberRole.OWNER) {
-      throw new ForbiddenException(
-        'Cannot change the owner via this endpoint — use transfer ownership',
-      );
+      throw new ForbiddenException(apiError('group.cannotChangeOwnerRole'));
     }
 
     const newRole =
@@ -1842,9 +1866,10 @@ export class GroupService {
       );
 
     // Email the member too. The notify call covers the bell; this
-    // covers the inbox. Keep label strings human, not enum values.
+    // covers the inbox. Roles go in as enum values; the email words
+    // them in the reader's language.
     const member = await this.userModel.findByPk(targetUserId, {
-      attributes: ['email', 'firstName'],
+      attributes: ['email', 'firstName', 'language'],
     });
     if (member?.email) {
       this.emailService
@@ -1853,8 +1878,9 @@ export class GroupService {
           memberFirstName: member.firstName,
           groupName: group.name,
           groupId: group.id,
-          oldRoleLabel: humanizeGroupRole(oldRole),
-          newRoleLabel: humanizeGroupRole(newRole),
+          oldRole,
+          newRole,
+          locale: toLocale(member.language),
         })
         .catch((err: Error) =>
           this.logger.error(
@@ -1865,24 +1891,5 @@ export class GroupService {
     }
 
     return target;
-  }
-}
-
-/**
- * Map the internal GroupMemberRole enum to a copy-safe label. Kept as
- * a free function so the role->copy table sits next to the only place
- * it's used; the in-app notification builder has its own ROLE_LABELS
- * map for the same reason.
- */
-function humanizeGroupRole(role: GroupMemberRole): string {
-  switch (role) {
-    case GroupMemberRole.OWNER:
-      return 'Owner';
-    case GroupMemberRole.MODERATOR:
-      return 'Moderator';
-    case GroupMemberRole.MEMBER:
-      return 'Member';
-    default:
-      return 'Member';
   }
 }

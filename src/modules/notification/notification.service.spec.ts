@@ -37,7 +37,11 @@ type NotificationStub = {
   type: string;
   title: string;
   body: string;
-  data: { screen: string; entityId?: string } | null;
+  data: {
+    screen: string;
+    entityId?: string;
+    queryParams?: Record<string, string>;
+  } | null;
   severity: NotificationSeverity;
   audienceType: NotificationAudienceType;
   audienceId: string | null;
@@ -174,6 +178,83 @@ describe('NotificationService', () => {
       expect(result.delivered.push).toBe('skipped:preference_off');
       expect(result.delivered.sms).toBe('skipped:preference_off');
       expect(result.deduped).toBe(false);
+    });
+
+    it('queues a push carrying the deep link the app routes on', async () => {
+      // SESSION_REMINDER_1H defaults to in-app + push and no email, so
+      // this exercises the push branch on its own.
+      notificationModel.findOne.mockResolvedValue(null);
+      notificationModel.create.mockResolvedValue(
+        makeNotificationRow({
+          type: NotificationType.SESSION_REMINDER_1H,
+          title: 'Session in 1 hour',
+          body: 'Today at 18:00',
+          data: {
+            screen: 'sessions',
+            entityId: 'sess-1',
+            queryParams: { tab: 'cancelled' },
+          },
+        }),
+      );
+      preferenceModel.findAll.mockResolvedValue([]);
+      userModel.findAll.mockResolvedValue([
+        { id: 'user-1', email: 'u1@test.io', firstName: 'U' },
+      ]);
+      receiptModel.findOrCreate.mockResolvedValue([makeReceiptRow(), true]);
+
+      const result = await service.notify({
+        userId: 'user-1',
+        type: NotificationType.SESSION_REMINDER_1H,
+        title: 'Session in 1 hour',
+        body: 'Today at 18:00',
+      });
+
+      expect(jobsService.enqueue).toHaveBeenCalledWith(
+        'notifications.push_send',
+        expect.objectContaining({
+          userId: 'user-1',
+          title: 'Session in 1 hour',
+          body: 'Today at 18:00',
+          // Both vendors only carry strings, so the nested queryParams
+          // object is flattened. The mobile deep-link resolver reads
+          // exactly these keys.
+          data: {
+            screen: 'sessions',
+            entityId: 'sess-1',
+            qp_tab: 'cancelled',
+          },
+        }),
+        expect.objectContaining({
+          jobId: expect.stringContaining('push_send.') as string,
+        }),
+      );
+      expect(result.delivered.push).toBe('queued');
+    });
+
+    it('reports push as unqueued rather than sent when there is no Redis', async () => {
+      notificationModel.findOne.mockResolvedValue(null);
+      notificationModel.create.mockResolvedValue(
+        makeNotificationRow({ type: NotificationType.SESSION_REMINDER_1H }),
+      );
+      preferenceModel.findAll.mockResolvedValue([]);
+      userModel.findAll.mockResolvedValue([
+        { id: 'user-1', email: 'u1@test.io', firstName: 'U' },
+      ]);
+      receiptModel.findOrCreate.mockResolvedValue([makeReceiptRow(), true]);
+      // What JobsService returns when REDIS_HOST is unset.
+      jobsService.enqueue.mockResolvedValue(null);
+
+      const result = await service.notify({
+        userId: 'user-1',
+        type: NotificationType.SESSION_REMINDER_1H,
+        title: 't',
+        body: 'b',
+      });
+
+      // Deliberately not a synchronous fallback like email has: a push
+      // needs credentials a dev machine will not have, and claiming it
+      // was sent would hide that.
+      expect(result.delivered.push).toBe('skipped:no_queue');
     });
 
     it('skips email when the user has no email on file', async () => {
@@ -319,6 +400,91 @@ describe('NotificationService', () => {
       expect(notificationModel.create).toHaveBeenCalledWith(
         expect.objectContaining({ audienceId: null }),
         { transaction: fakeTx },
+      );
+    });
+
+    it('renders a catalog message per recipient, in their language', async () => {
+      notificationModel.findOne.mockResolvedValue(null);
+      // The row comes back as stored: English text + key + raw params.
+      notificationModel.create.mockImplementation(
+        (row: Record<string, unknown>) =>
+          Promise.resolve({ ...makeNotificationRow(), ...row }),
+      );
+      preferenceModel.findAll.mockResolvedValue([]);
+      userModel.findAll.mockResolvedValue([
+        { id: 'user-en', email: 'en@test.io', language: 'en' },
+        { id: 'user-ro', email: 'ro@test.io', language: 'ro' },
+      ]);
+      receiptModel.findOrCreate
+        .mockResolvedValueOnce([makeReceiptRow({ id: 'r-en' }), true])
+        .mockResolvedValueOnce([makeReceiptRow({ id: 'r-ro' }), true]);
+
+      await service.notifyMany(['user-en', 'user-ro'], {
+        type: NotificationType.CLIENT_REQUEST_RECEIVED,
+        message: { key: 'client.requestReceived', params: { name: 'Ana' } },
+        data: { screen: 'coaching/pending-requests' },
+        channelOverride: { email: true },
+      });
+
+      expect(notificationModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'New coaching request',
+          body: 'Ana would like to work with you.',
+          messageKey: 'client.requestReceived',
+          messageParams: { name: 'Ana' },
+        }),
+        { transaction: fakeTx },
+      );
+      expect(jobsService.enqueue).toHaveBeenCalledWith(
+        'notifications.email_send',
+        expect.objectContaining({
+          to: 'en@test.io',
+          title: 'New coaching request',
+          body: 'Ana would like to work with you.',
+          locale: 'en',
+          ctaLabel: 'Open MotionHive',
+        }),
+        expect.anything(),
+      );
+      expect(jobsService.enqueue).toHaveBeenCalledWith(
+        'notifications.email_send',
+        expect.objectContaining({
+          to: 'ro@test.io',
+          title: 'Cerere nouă',
+          body: 'Ana vrea să se antreneze sub îndrumarea ta.',
+          locale: 'ro',
+          ctaLabel: 'Deschide MotionHive',
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('keeps an uncatalogued notification English end to end', async () => {
+      notificationModel.findOne.mockResolvedValue(null);
+      notificationModel.create.mockResolvedValue(makeNotificationRow());
+      preferenceModel.findAll.mockResolvedValue([]);
+      userModel.findAll.mockResolvedValue([
+        { id: 'user-1', email: 'ro@test.io', language: 'ro' },
+      ]);
+      receiptModel.findOrCreate.mockResolvedValue([makeReceiptRow(), true]);
+
+      await service.notify({
+        userId: 'user-1',
+        type: NotificationType.INVOICE_PAID,
+        title: 'Invoice paid',
+        body: 'Your invoice was paid',
+        data: { screen: 'invoice', entityId: 'inv-9' },
+      });
+
+      // English text in an English layout, not English wrapped in Romanian.
+      expect(jobsService.enqueue).toHaveBeenCalledWith(
+        'notifications.email_send',
+        expect.objectContaining({
+          title: 'Invoice paid',
+          locale: 'en',
+          ctaLabel: 'Open MotionHive',
+        }),
+        expect.anything(),
       );
     });
 

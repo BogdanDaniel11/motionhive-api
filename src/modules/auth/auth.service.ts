@@ -14,6 +14,9 @@ import { Sequelize } from 'sequelize-typescript';
 import { Op } from 'sequelize';
 import { User } from '../user/entities/user.entity';
 import { UserService } from '../user/user.service';
+import type { OAuthProfile } from '../user/user.service';
+import { apiError, toLocale } from '../../common/i18n';
+import type { Locale } from '../../common/i18n';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -132,7 +135,11 @@ export class AuthService {
       this.logger.log(`User registered: ${user.email}`, 'AuthService');
 
       this.emailService
-        .sendEmailVerification(user.email, verificationToken)
+        .sendEmailVerification(
+          user.email,
+          verificationToken,
+          toLocale(user.language),
+        )
         .catch((err) =>
           this.logger.error(
             `Failed to send verification email: ${err.message}`,
@@ -185,17 +192,20 @@ export class AuthService {
     const user = await this.userService.findByEmail(loginDto.email);
 
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException(apiError('auth.invalidCredentials'));
     }
 
     if (this.userService.isAccountLocked(user)) {
-      const lockedUntil = user.lockedUntil!.toLocaleString();
+      const minutes = Math.max(
+        1,
+        Math.ceil((user.lockedUntil!.getTime() - Date.now()) / 60_000),
+      );
       this.logger.warn(
         `Login attempt on locked account: ${user.email}`,
         'AuthService',
       );
       throw new UnauthorizedException(
-        `Account is locked due to multiple failed login attempts. Try again after ${lockedUntil}`,
+        apiError('auth.accountLocked', { minutes }),
       );
     }
 
@@ -212,7 +222,7 @@ export class AuthService {
         'AuthService',
       );
 
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException(apiError('auth.invalidCredentials'));
     }
 
     await this.userService.resetFailedAttempts(user);
@@ -240,13 +250,11 @@ export class AuthService {
   ): Promise<{ message: string }> {
     const user = await this.userService.findById(userId);
     if (!user) {
-      throw new UnauthorizedException('User not found');
+      throw new UnauthorizedException(apiError('common.unauthorized'));
     }
 
     if (!user.passwordHash) {
-      throw new BadRequestException(
-        'Cannot change password for OAuth-only accounts. Use your social login provider.',
-      );
+      throw new BadRequestException(apiError('auth.noPasswordToChange'));
     }
 
     const isValid = await this.userService.validatePassword(
@@ -254,13 +262,13 @@ export class AuthService {
       dto.currentPassword,
     );
     if (!isValid) {
-      throw new UnauthorizedException('Current password is incorrect');
+      throw new UnauthorizedException(
+        apiError('auth.currentPasswordIncorrect'),
+      );
     }
 
     if (dto.currentPassword === dto.newPassword) {
-      throw new BadRequestException(
-        'New password must be different from current password',
-      );
+      throw new BadRequestException(apiError('auth.samePassword'));
     }
 
     await this.userService.changePassword(user, dto.newPassword);
@@ -275,7 +283,13 @@ export class AuthService {
     // success response; the email is reassurance + an out for victims
     // of session hijack.
     this.emailService
-      .sendPasswordChangedEmail(user.email, user.firstName, new Date())
+      .sendPasswordChangedEmail(
+        user.email,
+        user.firstName,
+        new Date(),
+        toLocale(user.language),
+        user.timezone,
+      )
       .catch((err: Error) =>
         this.logger.error(
           `Failed to send password-changed email to ${user.email}: ${err.message}`,
@@ -434,12 +448,12 @@ export class AuthService {
         secret: this.configService.get('JWT_REFRESH_SECRET'),
       });
     } catch {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new UnauthorizedException(apiError('common.unauthorized'));
     }
 
     const user = await this.userService.findById(payload.sub);
     if (!user || !user.isActive) {
-      throw new UnauthorizedException('User not found or inactive');
+      throw new UnauthorizedException(apiError('common.unauthorized'));
     }
 
     // Check passwordChangedAt — reject tokens issued before password change
@@ -448,9 +462,7 @@ export class AuthService {
         user.passwordChangedAt.getTime() / 1000,
       );
       if (payload.iat < passwordChangedAtSec) {
-        throw new UnauthorizedException(
-          'Password was changed. Please log in again.',
-        );
+        throw new UnauthorizedException(apiError('auth.passwordChanged'));
       }
     }
 
@@ -465,13 +477,11 @@ export class AuthService {
     });
 
     if (!storedToken) {
-      throw new UnauthorizedException(
-        'Refresh token has been revoked or does not exist',
-      );
+      throw new UnauthorizedException(apiError('common.unauthorized'));
     }
 
     if (storedToken.expiresAt < new Date()) {
-      throw new UnauthorizedException('Refresh token has expired');
+      throw new UnauthorizedException(apiError('common.unauthorized'));
     }
 
     // Revoke old token
@@ -554,7 +564,11 @@ export class AuthService {
       const resetToken =
         await this.userService.generatePasswordResetToken(user);
 
-      await this.emailService.sendPasswordResetEmail(user.email, resetToken);
+      await this.emailService.sendPasswordResetEmail(
+        user.email,
+        resetToken,
+        toLocale(user.language),
+      );
 
       this.logger.log(
         `Password reset requested for ${user.email}`,
@@ -588,7 +602,7 @@ export class AuthService {
     );
 
     if (!user) {
-      throw new BadRequestException('Invalid or expired reset token');
+      throw new BadRequestException(apiError('auth.resetLinkInvalid'));
     }
 
     await this.userService.resetPassword(user, resetPasswordDto.newPassword);
@@ -613,7 +627,7 @@ export class AuthService {
     );
 
     if (!user) {
-      throw new BadRequestException('Invalid or expired verification token');
+      throw new BadRequestException(apiError('auth.verificationLinkInvalid'));
     }
 
     if (user.isEmailVerified) {
@@ -625,7 +639,7 @@ export class AuthService {
     this.logger.log(`Email verified for user: ${user.email}`, 'AuthService');
 
     this.emailService
-      .sendWelcomeEmail(user.email, user.firstName)
+      .sendWelcomeEmail(user.email, user.firstName, toLocale(user.language))
       .catch((err) =>
         this.logger.error(
           `Failed to send welcome email: ${err.message}`,
@@ -671,6 +685,7 @@ export class AuthService {
       await this.emailService.sendEmailVerification(
         user.email,
         verificationToken,
+        toLocale(user.language),
       );
 
       this.logger.log(
@@ -689,10 +704,12 @@ export class AuthService {
   // OAUTH
   // =====================================================
 
-  async registerWithGoogle(idToken: string) {
+  async registerWithGoogle(idToken: string, language?: Locale) {
     const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
     if (!clientId) {
-      throw new BadRequestException('Google Sign-In is not configured');
+      throw new BadRequestException(
+        apiError('auth.providerUnavailable', { provider: 'Google' }),
+      );
     }
 
     const client = new OAuth2Client(clientId);
@@ -714,17 +731,21 @@ export class AuthService {
         `Google ID token verification failed: ${message}`,
         'AuthService',
       );
-      throw new UnauthorizedException('Invalid Google ID token');
+      throw new UnauthorizedException(
+        apiError('auth.providerSignInFailed', { provider: 'Google' }),
+      );
     }
 
     if (!payload?.sub) {
-      throw new UnauthorizedException('Invalid Google ID token');
+      throw new UnauthorizedException(
+        apiError('auth.providerSignInFailed', { provider: 'Google' }),
+      );
     }
 
     const email = payload.email?.trim();
     if (!email) {
       throw new BadRequestException(
-        'Google account has no email; email is required to sign in.',
+        apiError('auth.providerNoEmail', { provider: 'Google' }),
       );
     }
 
@@ -733,16 +754,19 @@ export class AuthService {
       email,
       firstName: payload.given_name?.trim() || 'User',
       lastName: payload.family_name?.trim() || '',
+      language,
     };
 
     return this.handleOAuthSignIn('GOOGLE', profile);
   }
 
-  async registerWithFacebook(accessToken: string) {
+  async registerWithFacebook(accessToken: string, language?: Locale) {
     const appId = this.configService.get<string>('FACEBOOK_APP_ID');
     const appSecret = this.configService.get<string>('FACEBOOK_APP_SECRET');
     if (!appId || !appSecret) {
-      throw new BadRequestException('Facebook Sign-In is not configured');
+      throw new BadRequestException(
+        apiError('auth.providerUnavailable', { provider: 'Facebook' }),
+      );
     }
 
     const appAccessToken = `${appId}|${appSecret}`;
@@ -753,14 +777,18 @@ export class AuthService {
       debugRes = await fetch(debugUrl);
     } catch (err) {
       this.logger.warn(`Facebook debug_token request failed: ${err}`);
-      throw new UnauthorizedException('Invalid Facebook token');
+      throw new UnauthorizedException(
+        apiError('auth.providerSignInFailed', { provider: 'Facebook' }),
+      );
     }
 
     const debugData = (await debugRes.json()) as {
       data?: { valid?: boolean; user_id?: string };
     };
     if (!debugData?.data?.valid || !debugData.data.user_id) {
-      throw new UnauthorizedException('Invalid Facebook access token');
+      throw new UnauthorizedException(
+        apiError('auth.providerSignInFailed', { provider: 'Facebook' }),
+      );
     }
 
     const meUrl = `https://graph.facebook.com/me?fields=id,email,first_name,last_name&access_token=${encodeURIComponent(accessToken)}`;
@@ -769,7 +797,9 @@ export class AuthService {
       meRes = await fetch(meUrl);
     } catch (err) {
       this.logger.warn(`Facebook me request failed: ${err}`);
-      throw new UnauthorizedException('Invalid Facebook token');
+      throw new UnauthorizedException(
+        apiError('auth.providerSignInFailed', { provider: 'Facebook' }),
+      );
     }
 
     const me = (await meRes.json()) as {
@@ -780,15 +810,19 @@ export class AuthService {
       error?: { message: string };
     };
     if (me.error || !me.id) {
+      this.logger.warn(
+        `Facebook me request returned no profile: ${me.error?.message ?? 'no id'}`,
+        'AuthService',
+      );
       throw new UnauthorizedException(
-        me.error?.message || 'Could not load Facebook profile',
+        apiError('auth.providerSignInFailed', { provider: 'Facebook' }),
       );
     }
 
     const email = me.email?.trim();
     if (!email) {
       throw new BadRequestException(
-        'Facebook account has no email or permission; email is required to sign in.',
+        apiError('auth.providerNoEmail', { provider: 'Facebook' }),
       );
     }
 
@@ -797,6 +831,7 @@ export class AuthService {
       email,
       firstName: me.first_name?.trim() || 'User',
       lastName: me.last_name?.trim() || '',
+      language,
     };
 
     return this.handleOAuthSignIn('FACEBOOK', profile);
@@ -810,12 +845,7 @@ export class AuthService {
    */
   private async handleOAuthSignIn(
     provider: 'GOOGLE' | 'FACEBOOK',
-    profile: {
-      providerUserId: string;
-      email: string;
-      firstName: string;
-      lastName: string;
-    },
+    profile: OAuthProfile,
   ) {
     const transaction = await this.sequelize.transaction();
     try {

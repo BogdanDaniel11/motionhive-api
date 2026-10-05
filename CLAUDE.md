@@ -2,6 +2,16 @@
 
 > **Naming note:** The product is **MotionHive**. The repo directory is still `beeactive-api` (historical, not renamed to avoid breaking IDE workspaces, git remotes, and absolute paths). Code identifiers, Stripe metadata (`platform: 'beeactive'`), DB column names, and email template variables also still use "beeactive" — **intentionally, do not mass-rename**. Stripe stores that metadata on live records and a sed-rename would desync production state. A rename is a dedicated future sprint, not incidental cleanup.
 
+## Two languages, always (English + Romanian)
+
+Every sentence a person can read ships in English **and** Romanian in the same change. No English-only text, no "translate later". Here that means:
+- **API errors**: `throw new XxxException(apiError('<module>.<name>', params))`, with the sentence in `src/common/i18n/catalog/{en,ro}/errors/<module>.ts`. Never a literal string in an exception. DTO messages a person can hit are catalog keys too.
+- **Notifications** (in-app, email, push): builders return `message: { key, params }`, the copy goes in both catalogs, and every builder gets a sample in `test/fixtures/notification-samples.ts`.
+- **Emails**: copy in `catalog/{en,ro}/email/<domain>.ts`, read through `emailCopy(locale, prefix)`. Every `EmailService.sendXxx` takes the recipient's `locale`, and new emails get a sample in `test/fixtures/email-samples.ts`.
+- **Our own content rows** (starters, catalog exercises): the `translations` JSONB, authored in `docs/content/translations/`.
+
+English defines the `Catalog` type, so a key missing in `ro` fails the build: never silence it with a cast. Romanian plurals need `one` / `few` / `other`. No dashes as punctuation in either language. The apps follow the same rule for their own text (`beeactive-ui/CLAUDE.md`, Translations). How-to detail: Key Patterns, i18n, below.
+
 ## Project Overview
 Fitness platform REST API built with NestJS. Manages instructors, clients, groups, sessions, profiles, blog, and Stripe Connect payments.
 
@@ -48,7 +58,7 @@ src/
 │   ├── guards/                # RolesGuard, PermissionsGuard
 │   ├── constants/             # Shared constants (countries.ts: Stripe Connect whitelist + currency map)
 │   ├── email/                 # One file per email template (auth/, group/, session/, …) + _layouts/base-layout
-│   ├── interceptors/          # CamelCaseInterceptor (APP_INTERCEPTOR)
+│   ├── interceptors/          # CamelCaseInterceptor, ContentLocaleInterceptor (APP_INTERCEPTOR)
 │   ├── middleware/            # RequestIdMiddleware (applied to all routes)
 │   ├── services/              # CloudinaryService, CryptoService, EmailService, EmailVerifierService
 │   ├── utils/                 # Pure helpers (html.utils:escapeHtml, search.utils:escapeLikeWildcards)
@@ -78,7 +88,7 @@ src/
 
 ### Global Pipeline (wired in main.ts + app.module.ts)
 - **Global filter**: HttpExceptionFilter
-- **Global interceptor**: CamelCaseInterceptor (APP_INTERCEPTOR)
+- **Global interceptors**: ContentLocaleInterceptor, then CamelCaseInterceptor (APP_INTERCEPTOR; registered in that order so content is localised last, on plain JSON)
 - **Global guard**: `UserThrottlerGuard` (APP_GUARD) — 300 req/60s **per route**, keyed by the verified JWT subject when there is one, by IP otherwise
 - **Global pipe**: ValidationPipe (whitelist + transform)
 - **Middleware**: RequestIdMiddleware on all routes
@@ -100,7 +110,7 @@ src/
 - **Thin controllers**: controllers do request unwrap → service call → response. No HTML rendering, no caching state, no field-picking, no DTO-shape branching, no query-string parsing/clamping (use a DTO with `@Min/@Max` instead). When a controller method grows past ~10 lines of work, push it into the service.
 - **Notifications**:
   - Producers call `notificationService.notify(builder(...))` — never object literals at the call site. Builders live in `<module>/notifications.ts` and take **primitive** arguments (id, name, cents, currency), never Sequelize entities (avoids partial-load bugs).
-  - Shared formatters in `notification/format.ts`: `formatMoney(cents, currency)`, `formatDueDate(date)`.
+  - Amounts and dates go into message params as raw tagged values from `common/i18n` (`money(cents, currency)`, `day(date)`, `dayTime(date, tz)`, `month('YYYY-MM')`), formatted per reader.
   - `data.screen` must map to a real FE route; tabbed pages use `data.queryParams` (e.g. `screen: 'profile', queryParams: { tab: 'memberships' }`) instead of `entityId`.
   - Place `notify()` calls **after** the surrounding tx commits (search `// notify-after-commit` for examples). Never inside the tx callback — `notify()` opens its own tx and a rollback would orphan the alert.
   - For webhook flows you don't own the tx of, use `NotificationOutbox` + `outbox.add(builder(...))` + `outbox.flush()` post-commit / `outbox.discard()` on rollback. See `notification/notification-outbox.ts`.
@@ -111,6 +121,8 @@ src/
   - `webhook_event` table has UNIQUE on `stripe_event_id` → idempotent replays
 - **Email idempotency**: BullMQ enqueues with `jobId = receipt.id`, AND the worker checks `receiptService.isChannelDelivered(receiptId, 'email')` before sending. Both layers are needed — jobId dedups re-enqueue, the receipt check dedups worker retries (Resend has no idempotency-key support).
 - **OAuth idempotency**: `social_account` has UNIQUE on `(provider, provider_user_id)`. `userService.findOrCreateFromOAuth` swallows a `UniqueConstraintError` on insert (concurrent-callback race) and returns the existing row.
+- **i18n (backend text in the reader's language)**: catalogs live in `src/common/i18n/catalog/{en,ro}/` as TypeScript; English defines the `Catalog` type, so a key missing in `ro` fails the build. Render with `translate(locale, key, params)` (ICU via `@messageformat/core`, same engine as the FE); narrow stored/untrusted values with `toLocale()`. Money and dates go in as raw tagged values (`money()`, `day()`, `dayTime()`), never pre-formatted strings. Notification builders return `message: { key: '<module>.<name>', params }`, never finished `title`/`body` text (that shape is for the debug endpoint only); a missing value is passed as `null` and worded by the message. The row stores key + params (migration 062) and the API renders per reader on list, email and push. Every builder has a sample in `test/fixtures/notification-samples.ts`, checked in both languages by `notification-builders.spec.ts`. Emails: copy in `catalog/{en,ro}/email/<domain>.ts`; templates read it through `emailCopy(locale, prefix)` (`common/email/_layouts/copy.ts`), whose `html()` escapes the whole sentence, so pass raw values and never put HTML in the catalog (`**bold**` only). Every `EmailService.sendXxx` takes a `locale`: the recipient's, or the sender's when the recipient has no account. New emails get samples in `test/fixtures/email-samples.ts`. Status + how-to: `docs/research/i18n/BACKEND_I18N_PLAN.md`.
+- **Content translations (our own DB rows in the reader's language)**: `exercise`, `muscle`, `equipment`, `program`, `program_workout`, `prescribed_exercise` have a nullable `translations` JSONB (`{"ro": {"name": ...}}`, keys are API field names; migration 063). English base columns stay and are the fallback per field. Only MotionHive's rows carry translations (CHECK on exercise/program: SYSTEM only); text a person wrote is shown as written. `ContentLocaleInterceptor` swaps the request's language (`requestLocale`: Accept-Language, then account) into the same fields on the way out, adds `originalName` when `name` changed, strips `translations`, and points a logged exercise's `exerciseNameSnapshot` at its translated live exercise. So: **a query with an explicit `attributes` list must include `'translations'`**, or that row silently stays English. Admin controllers opt out with `@RawContent()`. Text copied into a person's own rows (starter copy, assignment, workout log) is written once in their language via `translatedText(row, field, locale)`. Search goes through `exercise.search_name` (every language, folded, `fold_for_search()`). Content is authored in `docs/content/translations/` and shipped by `node scripts/build-content-translations.mjs` (generates the migration, refuses dashes, cedillas and step-count mismatches). Design: `docs/research/i18n/EXERCISE_CONTENT_I18N.md`.
 - **Shared singletons**: `EmailService` is exported from a `@Global() EmailModule` registered in AppModule. Don't list `EmailService` as a provider in feature modules — just inject it.
 
 ### RBAC
@@ -187,7 +199,7 @@ Where instructors deliver their service. One instructor has 0..N venues; session
 ### Email Templates
 One file per email under `src/common/email/<domain>/<name>.template.ts`. The shared shell + helpers (`baseLayout`, `heading`, `paragraph`, `primaryButton`, `featureItem`, `divider`, etc.) live in `_layouts/base-layout.ts`. `_layouts/audience.ts` is a placeholder for future per-audience theming. Public surface re-exported from `src/common/email/index.ts` — services import from there, not deep paths.
 
-**Security rule:** every user-controlled string interpolated into HTML MUST be escaped with `escapeHtml` from `src/common/utils/html.utils.ts`. New templates go through the same gate.
+**Security rule:** every user-controlled string interpolated into HTML MUST be escaped. Copy rendered with `emailCopy(...).html()` is escaped for you (values included); anything interpolated outside it (a `personCard` name, a data-row value) still goes through `escapeHtml` from `src/common/utils/html.utils.ts`.
 
 ### Environment Variables
 Full schema in `src/config/env.validation.ts` (Joi, `abortEarly: false`).
@@ -227,7 +239,7 @@ Full schema in `src/config/env.validation.ts` (Joi, `abortEarly: false`).
 - DB columns: snake_case (auto via `underscored: true`)
 - Nullable Sequelize fields need `| null` in the type (never `as any`)
 - Controllers are thin — business logic in services
-- Errors: NestJS built-in exceptions (`NotFoundException`, `ConflictException`, etc.)
+- Errors: NestJS built-in exceptions with a catalog message: `throw new ConflictException(apiError('<module>.<name>', params))`, never a literal English string (the global filter translates it for the caller). Add the sentence to `common/i18n/catalog/{en,ro}/errors/<module>.ts`. DTO messages a person can hit are catalog key strings (`message: 'errors.validation.<name>'`)
 - **Always use transactions** for multi-table operations (pass `{ transaction }` to every ORM call)
 - **Use `Op.iLike`** (not `Op.like`) for search on PostgreSQL, and escape the term with `escapeLikeWildcards` (common/utils/search.utils) — an unescaped `%` matches every row
 - **Use PostgreSQL JSON operators** (`@>`, `?`, `->`) — never MySQL functions (`JSON_CONTAINS`)

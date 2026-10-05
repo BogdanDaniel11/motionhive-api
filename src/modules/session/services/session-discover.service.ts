@@ -13,6 +13,7 @@ import {
   getOffset,
   PaginatedResponse,
 } from '../../../common/dto/pagination.dto';
+import { apiError } from '../../../common/i18n';
 import { User } from '../../user/entities/user.entity';
 import { Venue } from '../../venue/entities/venue.entity';
 import {
@@ -280,15 +281,15 @@ export class SessionDiscoverService {
       where: { handle: instructorHandle },
       attributes: ['id'],
     });
-    if (!instructor) throw new NotFoundException('Session not found');
+    if (!instructor) throw new NotFoundException(apiError('session.notFound'));
 
     const template = await this.templateModel.findOne({
       where: { instructorId: instructor.id, slug: templateSlug },
       attributes: [...PUBLIC_TEMPLATE_FIELDS, 'status'],
     });
-    if (!template) throw new NotFoundException('Session not found');
+    if (!template) throw new NotFoundException(apiError('session.notFound'));
     if (template.status !== SessionTemplateStatus.Active) {
-      throw new NotFoundException('Session not found');
+      throw new NotFoundException(apiError('session.notFound'));
     }
     // Slug routes are anonymous-friendly only for OPEN/FREE; gated
     // sessions need the authed `/instances/:id/public` flow.
@@ -296,11 +297,11 @@ export class SessionDiscoverService {
       template.access !== SessionAccess.Open &&
       template.access !== SessionAccess.Free
     ) {
-      throw new NotFoundException('Session not found');
+      throw new NotFoundException(apiError('session.notFound'));
     }
 
     const instance = await this.findNextUpcoming(template.id);
-    if (!instance) throw new NotFoundException('Session not found');
+    if (!instance) throw new NotFoundException(apiError('session.notFound'));
 
     return this.toPublicShape(instance, template, callerId);
   }
@@ -350,7 +351,7 @@ export class SessionDiscoverService {
       ],
       attributes: this.publicInstanceAttributes(),
     });
-    if (!instance) throw new NotFoundException('Session not found');
+    if (!instance) throw new NotFoundException(apiError('session.notFound'));
 
     return this.toPublicShape(instance, instance.template, callerId);
   }
@@ -371,12 +372,12 @@ export class SessionDiscoverService {
     // archived is no longer on offer — but the people it happened to still
     // need to reach it, because that is where their notifications point.
     if (!isLive) {
-      if (!callerId) throw new NotFoundException('Session not found');
+      if (!callerId) throw new NotFoundException(apiError('session.notFound'));
       const wasThere =
         callerId === instance.instructorId ||
         (await this.accessService.wasEverParticipant(instance.id, callerId));
       if (wasThere) return instance;
-      throw new NotFoundException('Session not found');
+      throw new NotFoundException(apiError('session.notFound'));
     }
 
     if (access === SessionAccess.Open || access === SessionAccess.Free) {
@@ -398,7 +399,7 @@ export class SessionDiscoverService {
     if (access === SessionAccess.GroupOnly) {
       return this.toBlockedShape(instance, template);
     }
-    throw new NotFoundException('Session not found');
+    throw new NotFoundException(apiError('session.notFound'));
   }
 
   /**
@@ -527,15 +528,15 @@ export class SessionDiscoverService {
       ? new Date(toIso)
       : new Date(now + DEFAULT_WINDOW_DAYS * 86_400_000);
     if (Number.isNaN(dateFrom.getTime()) || Number.isNaN(dateTo.getTime())) {
-      throw new BadRequestException('Invalid date range');
+      throw new BadRequestException(apiError('session.invalidDateRange'));
     }
     if (dateFrom >= dateTo) {
-      throw new BadRequestException('dateFrom must be before dateTo');
+      throw new BadRequestException(apiError('session.dateRangeOrder'));
     }
     const spanDays = (dateTo.getTime() - dateFrom.getTime()) / 86_400_000;
     if (spanDays > MAX_WINDOW_DAYS) {
       throw new BadRequestException(
-        `Date range too wide (max ${MAX_WINDOW_DAYS} days)`,
+        apiError('session.dateRangeTooWide', { days: MAX_WINDOW_DAYS }),
       );
     }
     return { dateFrom, dateTo };

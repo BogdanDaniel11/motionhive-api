@@ -12,7 +12,10 @@ import { literal, Op, type Order, type Transaction } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 
 import { assertOwned } from '../../common/utils/ownership.utils';
-import { escapeLikeWildcards } from '../../common/utils/search.utils';
+import {
+  escapeLikeWildcards,
+  normalizeSearchTerm,
+} from '../../common/utils/search.utils';
 import {
   buildPaginatedResponse,
   getOffset,
@@ -35,6 +38,7 @@ import {
   ProgramStatus,
 } from './entities/workout.enums';
 import { CopyProgramWeekDto } from './dto/copy-program-week.dto';
+import { CopyProgramDayDto } from './dto/copy-program-day.dto';
 import { ReorderPrescribedRowsDto } from './dto/reorder-prescribed-rows.dto';
 import { CreatePrescribedExerciseDto } from './dto/create-prescribed-exercise.dto';
 import { CreatePrescribedSetDto } from './dto/create-prescribed-set.dto';
@@ -52,6 +56,13 @@ import { UpdatePrescribedExerciseDto } from './dto/update-prescribed-exercise.dt
 import { UpdatePrescribedSetDto } from './dto/update-prescribed-set.dto';
 import { UpdateProgramDto } from './dto/update-program.dto';
 import { UpdateProgramWorkoutDto } from './dto/update-program-workout.dto';
+import {
+  DEFAULT_LOCALE,
+  apiError,
+  translate,
+  translatedText,
+} from '../../common/i18n';
+import type { ErrorKey, Locale } from '../../common/i18n';
 
 /**
  * Temporary week namespace used while repositioning workouts. The
@@ -62,6 +73,9 @@ import { UpdateProgramWorkoutDto } from './dto/update-program-workout.dto';
  * `week + 10000` can never clash with a live slot.
  */
 const WEEK_PARK_OFFSET = 10_000;
+
+/** Turning `duration_days` back into whole weeks. */
+const DAYS_PER_WEEK = 7;
 
 /**
  * ProgramService — nested CRUD across the program-authoring tree
@@ -126,11 +140,16 @@ export class ProgramService {
         : {}),
       ...(filter.folder ? { folder: filter.folder } : {}),
       ...(filter.level ? { level: filter.level } : {}),
+      // Starter routines are searchable by their name in any language.
       ...(filter.search
         ? {
-            name: {
-              [Op.iLike]: `%${escapeLikeWildcards(filter.search.trim())}%`,
-            },
+            [Op.and]: [
+              literal(
+                `fold_for_search(name || ' ' || translated_names(translations)) LIKE ${this.sequelize.escape(
+                  `%${escapeLikeWildcards(normalizeSearchTerm(filter.search).toLowerCase())}%`,
+                )}`,
+              ),
+            ],
           }
         : {}),
     };
@@ -237,6 +256,7 @@ export class ProgramService {
                     'kind',
                     'level',
                     'thumbnailUrl',
+                    'translations',
                   ],
                 },
                 {
@@ -259,7 +279,7 @@ export class ProgramService {
     if (program?.source === ProgramSource.System) return program;
 
     assertOwned(program, ownerId, (p) => p.ownerId, {
-      notFoundMessage: 'Program not found.',
+      notFoundMessage: apiError('workout.programNotFound'),
       onMismatch: 'hide',
     });
     return program;
@@ -282,7 +302,12 @@ export class ProgramService {
    * Also works on your own routines, which is the cheap way to make a
    * variant of something you already have.
    */
-  async duplicateForUser(programId: string, userId: string): Promise<Program> {
+  async duplicateForUser(
+    programId: string,
+    userId: string,
+    /** The copier's language: the copy is named in it. */
+    locale: Locale = DEFAULT_LOCALE,
+  ): Promise<Program> {
     const source = await this.programModel.findOne({
       where: { id: programId, deletedAt: null },
       include: [
@@ -307,19 +332,25 @@ export class ProgramService {
     const readable =
       source &&
       (source.ownerId === userId || source.source === ProgramSource.System);
-    if (!readable) throw new NotFoundException('Program not found.');
+    if (!readable) {
+      throw new NotFoundException(apiError('workout.programNotFound'));
+    }
 
     return this.sequelize.transaction(async (tx) => {
       const copy = await this.programModel.create(
         {
           ownerId: userId,
-          name: `${source.name} (my copy)`,
-          description: source.description,
+          // A copy is the person's own text, so it is written once in their
+          // language and carries no translations.
+          name: translate(locale, 'content.programCopyName', {
+            name: translatedText(source, 'name', locale),
+          }),
+          description: translatedText(source, 'description', locale),
           kind: source.kind,
           status: ProgramStatus.Draft,
           source: ProgramSource.User,
           isSingleWorkout: source.isSingleWorkout,
-          folder: source.folder,
+          folder: translatedText(source, 'folder', locale),
           goalTags: source.goalTags,
           durationDays: source.durationDays,
         },
@@ -330,8 +361,8 @@ export class ProgramService {
         const newWorkout = await this.workoutModel.create(
           {
             programId: copy.id,
-            name: w.name,
-            notes: w.notes,
+            name: translatedText(w, 'name', locale),
+            notes: translatedText(w, 'notes', locale),
             weekIndex: w.weekIndex,
             dayIndex: w.dayIndex,
             sequenceNumber: w.sequenceNumber,
@@ -349,7 +380,7 @@ export class ProgramService {
               blockId: ex.blockId,
               supersetGroupId: ex.supersetGroupId,
               orderIndex: ex.orderIndex,
-              notes: ex.notes,
+              notes: translatedText(ex, 'notes', locale),
               alternateExerciseId: ex.alternateExerciseId,
             },
             { transaction: tx },
@@ -401,7 +432,7 @@ export class ProgramService {
     const rows = await this.prescribedExerciseModel.findAll({
       where: { programWorkoutId: workoutId },
     });
-    await this._reorderRows(rows, dto, 'Exercise not found.');
+    await this._reorderRows(rows, dto, 'exercise.notFound');
     return this.prescribedExerciseModel.findAll({
       where: { programWorkoutId: workoutId },
       order: [['orderIndex', 'ASC']],
@@ -424,7 +455,7 @@ export class ProgramService {
     const rows = await this.prescribedSetModel.findAll({
       where: { prescribedExerciseId: exerciseId },
     });
-    await this._reorderRows(rows, dto, 'Set not found.');
+    await this._reorderRows(rows, dto, 'workout.setNotFound');
     return this.prescribedSetModel.findAll({
       where: { prescribedExerciseId: exerciseId },
       order: [['orderIndex', 'ASC']],
@@ -439,16 +470,14 @@ export class ProgramService {
   private async _reorderRows(
     rows: (PrescribedExercise | PrescribedSet)[],
     dto: ReorderPrescribedRowsDto,
-    notFound: string,
+    notFound: ErrorKey,
   ): Promise<void> {
     const byId = new Map(rows.map((r) => [r.id, r]));
     const seen = new Set<string>();
     for (const item of dto.items) {
-      if (!byId.has(item.id)) throw new NotFoundException(notFound);
+      if (!byId.has(item.id)) throw new NotFoundException(apiError(notFound));
       if (seen.has(item.id)) {
-        throw new BadRequestException(
-          'Each row may appear only once in items.',
-        );
+        throw new BadRequestException(apiError('workout.reorderDuplicate'));
       }
       seen.add(item.id);
     }
@@ -459,7 +488,7 @@ export class ProgramService {
       const index = targetById.get(row.id) ?? row.orderIndex;
       if (taken.has(index)) {
         throw new ConflictException(
-          `Two rows would share position ${index + 1}.`,
+          apiError('workout.reorderPositionClash', { position: index + 1 }),
         );
       }
       taken.add(index);
@@ -485,7 +514,7 @@ export class ProgramService {
   ): Promise<ProgramWorkout[]> {
     await this._loadProgram(programId, ownerId);
     if (dto.fromWeekIndex === dto.toWeekIndex) {
-      throw new BadRequestException('Source and target week must differ.');
+      throw new BadRequestException(apiError('workout.copyWeekSameWeek'));
     }
 
     const source = await this.workoutModel.findAll({
@@ -501,7 +530,7 @@ export class ProgramService {
       ],
     });
     if (!source.length) {
-      throw new BadRequestException('That week has nothing to copy.');
+      throw new BadRequestException(apiError('workout.weekEmpty'));
     }
 
     return this.sequelize.transaction(async (tx) => {
@@ -513,58 +542,345 @@ export class ProgramService {
 
       const copied: ProgramWorkout[] = [];
       for (const w of source) {
-        const newWorkout = await this.workoutModel.create(
-          {
+        copied.push(
+          await this._cloneWorkoutInto(
+            w,
             programId,
-            name: w.name,
-            notes: w.notes,
-            weekIndex: dto.toWeekIndex,
-            dayIndex: w.dayIndex,
-            sequenceNumber: w.sequenceNumber,
-            phase: w.phase,
-            estimatedDurationMinutes: w.estimatedDurationMinutes,
+            dto.toWeekIndex,
+            w.dayIndex,
+            tx,
+          ),
+        );
+      }
+      await this._resequence(programId, tx);
+      return copied;
+    });
+  }
+
+  /**
+   * Copy one day's training into the same day slot of other weeks.
+   *
+   * "Make Monday the same for weeks 2 to 5" — the day-level twin of
+   * `copyWeek`, and multi-target for the same reason: one request per week
+   * would walk the same tree repeatedly and trip the throttle.
+   *
+   * Replaces whatever occupies the target slot, exactly as `copyWeek`
+   * replaces a week. One rule for both, so a coach never has to remember
+   * which verb merges and which overwrites — the UI states the count of
+   * days it is about to replace before committing.
+   */
+  async copyDay(
+    programId: string,
+    dto: CopyProgramDayDto,
+    ownerId: string,
+  ): Promise<ProgramWorkout[]> {
+    await this._loadProgram(programId, ownerId);
+
+    const toDayIndex = dto.toDayIndex ?? dto.dayIndex;
+    const movingDay = toDayIndex !== dto.dayIndex;
+
+    // Landing on a different day is only meaningful for one week: across a
+    // block it would mean "which day?" once per week, which is a different
+    // feature. Rejected rather than guessed at.
+    if (movingDay && dto.toWeekIndexes.length > 1) {
+      throw new BadRequestException(apiError('workout.copyDayOneWeek'));
+    }
+
+    // Same slot is a copy onto itself; a different day in the same week is a
+    // real target, so the source week only drops out when the day matches.
+    const targets = [...new Set(dto.toWeekIndexes)].filter(
+      (w) => movingDay || w !== dto.fromWeekIndex,
+    );
+    if (!targets.length) {
+      throw new BadRequestException(apiError('workout.copyDayNoTarget'));
+    }
+
+    const source = await this.workoutModel.findOne({
+      where: {
+        programId,
+        weekIndex: dto.fromWeekIndex,
+        dayIndex: dto.dayIndex,
+      },
+      include: [
+        {
+          model: PrescribedExercise,
+          as: 'exercises',
+          required: false,
+          include: [{ model: PrescribedSet, as: 'sets', required: false }],
+        },
+      ],
+    });
+    if (!source) {
+      throw new BadRequestException(apiError('workout.dayEmpty'));
+    }
+
+    return this.sequelize.transaction(async (tx) => {
+      // CASCADE on the FK takes the nested exercises and sets with them.
+      await this.workoutModel.destroy({
+        where: { programId, weekIndex: targets, dayIndex: toDayIndex },
+        transaction: tx,
+      });
+
+      const copied: ProgramWorkout[] = [];
+      for (const weekIndex of targets) {
+        copied.push(
+          await this._cloneWorkoutInto(
+            source,
+            programId,
+            weekIndex,
+            toDayIndex,
+            tx,
+          ),
+        );
+      }
+      await this._resequence(programId, tx);
+      return copied;
+    });
+  }
+
+  /**
+   * Repeat the weeks already built into the empty ones after them.
+   *
+   * The block is every week up to the last one holding work — rest weeks
+   * inside it included — and it cycles: a 3-week block on a 10-week
+   * program fills weeks 4–10 as 1, 2, 3, 1, 2, 3, 1. Only weeks past the
+   * block are written, and those are empty by definition, so nothing a
+   * coach built is ever replaced and running it twice changes nothing.
+   */
+  async repeatWeeks(programId: string, ownerId: string): Promise<Program> {
+    const program = await this._loadProgram(programId, ownerId);
+    if (program.isSingleWorkout) {
+      throw new BadRequestException(apiError('workout.routineNoWeeksToRepeat'));
+    }
+    if (!program.durationDays) {
+      throw new BadRequestException(apiError('workout.programNeedsLength'));
+    }
+    const totalWeeks = Math.ceil(program.durationDays / DAYS_PER_WEEK);
+
+    const built = await this.workoutModel.findAll({
+      where: { programId },
+      include: [
+        {
+          model: PrescribedExercise,
+          as: 'exercises',
+          required: false,
+          include: [{ model: PrescribedSet, as: 'sets', required: false }],
+        },
+      ],
+    });
+    if (!built.length) {
+      throw new BadRequestException(apiError('workout.nothingToRepeat'));
+    }
+
+    const blockLength = Math.max(...built.map((w) => w.weekIndex)) + 1;
+    if (blockLength < totalWeeks) {
+      const byWeek = new Map<number, ProgramWorkout[]>();
+      for (const w of built) {
+        byWeek.set(w.weekIndex, [...(byWeek.get(w.weekIndex) ?? []), w]);
+      }
+
+      await this.sequelize.transaction(async (tx) => {
+        for (let week = blockLength; week < totalWeeks; week++) {
+          for (const source of byWeek.get(week % blockLength) ?? []) {
+            await this._cloneWorkoutInto(
+              source,
+              programId,
+              week,
+              source.dayIndex,
+              tx,
+            );
+          }
+        }
+        await this._resequence(programId, tx);
+      });
+    }
+
+    return this.findById(programId, ownerId);
+  }
+
+  /**
+   * Remove one week and close the gap.
+   *
+   * Its days are deleted, every later week moves up one, and a declared
+   * length loses a week with it — a program that kept its length would
+   * simply grow an empty week at the end, which is not what "delete" means.
+   */
+  async deleteWeek(
+    programId: string,
+    weekIndex: number,
+    ownerId: string,
+  ): Promise<Program> {
+    const program = await this._loadProgram(programId, ownerId);
+    if (program.isSingleWorkout) {
+      throw new BadRequestException(apiError('workout.routineNoWeeksToDelete'));
+    }
+
+    const workouts = await this.workoutModel.findAll({
+      where: { programId },
+      attributes: ['id', 'weekIndex'],
+    });
+    const declared = program.durationDays
+      ? Math.ceil(program.durationDays / DAYS_PER_WEEK)
+      : 0;
+    const used = workouts.reduce((max, w) => Math.max(max, w.weekIndex + 1), 0);
+    const totalWeeks = Math.max(declared, used);
+
+    if (weekIndex < 0 || weekIndex >= totalWeeks) {
+      throw new NotFoundException(apiError('workout.weekNotFound'));
+    }
+    if (totalWeeks <= 1) {
+      throw new BadRequestException(apiError('workout.programNeedsOneWeek'));
+    }
+
+    const doomed = workouts.filter((w) => w.weekIndex === weekIndex).length;
+    if (doomed > 0) {
+      const live = await this._countLiveAssignments(programId);
+      if (live > 0) {
+        throw new ConflictException(
+          apiError('workout.cannotDeleteLiveWeek', {
+            clients: live,
+            week: weekIndex + 1,
+            days: doomed,
+          }),
+        );
+      }
+    }
+
+    const laterWeeks = [
+      ...new Set(
+        workouts.filter((w) => w.weekIndex > weekIndex).map((w) => w.weekIndex),
+      ),
+    ].sort((a, b) => a - b);
+
+    await this.sequelize.transaction(async (tx) => {
+      // Exercises and sets cascade from program_workout.
+      await this.workoutModel.destroy({
+        where: { programId, weekIndex },
+        transaction: tx,
+      });
+      // Ascending, one week at a time: each lands in the slot the one
+      // before it just left, so the unique (week, day) index never sees
+      // two rows in the same place.
+      for (const week of laterWeeks) {
+        await this.workoutModel.update(
+          { weekIndex: week - 1 },
+          { where: { programId, weekIndex: week }, transaction: tx },
+        );
+      }
+      if (program.durationDays) {
+        await program.update(
+          {
+            durationDays: Math.max(
+              DAYS_PER_WEEK,
+              program.durationDays - DAYS_PER_WEEK,
+            ),
           },
           { transaction: tx },
         );
-
-        for (const ex of w.exercises ?? []) {
-          const newExercise = await this.prescribedExerciseModel.create(
-            {
-              programWorkoutId: newWorkout.id,
-              exerciseId: ex.exerciseId,
-              blockId: ex.blockId,
-              supersetGroupId: ex.supersetGroupId,
-              orderIndex: ex.orderIndex,
-              notes: ex.notes,
-              alternateExerciseId: ex.alternateExerciseId,
-            },
-            { transaction: tx },
-          );
-
-          const sets = (ex.sets ?? []).map((st) => ({
-            prescribedExerciseId: newExercise.id,
-            orderIndex: st.orderIndex,
-            setType: st.setType,
-            targetRepsMin: st.targetRepsMin,
-            targetRepsMax: st.targetRepsMax,
-            targetWeightKg: st.targetWeightKg,
-            targetWeightPercent1rm: st.targetWeightPercent1rm,
-            targetDurationSeconds: st.targetDurationSeconds,
-            targetDistanceMeters: st.targetDistanceMeters,
-            targetRpe: st.targetRpe,
-            targetRir: st.targetRir,
-            restAfterSeconds: st.restAfterSeconds,
-            tempo: st.tempo,
-            notes: st.notes,
-          }));
-          if (sets.length) {
-            await this.prescribedSetModel.bulkCreate(sets, { transaction: tx });
-          }
-        }
-        copied.push(newWorkout);
       }
-      return copied;
+      await this._resequence(programId, tx);
     });
+
+    return this.findById(programId, ownerId);
+  }
+
+  /**
+   * Keep `sequenceNumber` in calendar order. Assignments deal workouts out
+   * by it, and a cloned workout arrives carrying its source's number.
+   */
+  private async _resequence(programId: string, tx: Transaction): Promise<void> {
+    const rows = await this.workoutModel.findAll({
+      where: { programId },
+      attributes: ['id', 'weekIndex', 'dayIndex', 'sequenceNumber'],
+      order: [
+        ['weekIndex', 'ASC'],
+        ['dayIndex', 'ASC'],
+      ],
+      transaction: tx,
+    });
+    for (const [index, row] of rows.entries()) {
+      if (row.sequenceNumber !== index) {
+        await row.update({ sequenceNumber: index }, { transaction: tx });
+      }
+    }
+  }
+
+  private _countLiveAssignments(programId: string): Promise<number> {
+    return this.assignmentModel.count({
+      where: {
+        masterProgramId: programId,
+        status: {
+          [Op.in]: [
+            ProgramAssignmentStatus.Pending,
+            ProgramAssignmentStatus.Active,
+            ProgramAssignmentStatus.Paused,
+          ],
+        },
+      },
+    });
+  }
+
+  /**
+   * Deep-copies one workout — its exercises and their sets — into a given
+   * week/day slot. Shared by `copyWeek` and `copyDay` so the two can never
+   * drift on which columns travel with a copy.
+   */
+  private async _cloneWorkoutInto(
+    source: ProgramWorkout,
+    programId: string,
+    weekIndex: number,
+    dayIndex: number,
+    tx: Transaction,
+  ): Promise<ProgramWorkout> {
+    const newWorkout = await this.workoutModel.create(
+      {
+        programId,
+        name: source.name,
+        notes: source.notes,
+        weekIndex,
+        dayIndex,
+        sequenceNumber: source.sequenceNumber,
+        phase: source.phase,
+        estimatedDurationMinutes: source.estimatedDurationMinutes,
+      },
+      { transaction: tx },
+    );
+
+    for (const ex of source.exercises ?? []) {
+      const newExercise = await this.prescribedExerciseModel.create(
+        {
+          programWorkoutId: newWorkout.id,
+          exerciseId: ex.exerciseId,
+          blockId: ex.blockId,
+          supersetGroupId: ex.supersetGroupId,
+          orderIndex: ex.orderIndex,
+          notes: ex.notes,
+          alternateExerciseId: ex.alternateExerciseId,
+        },
+        { transaction: tx },
+      );
+
+      const sets = (ex.sets ?? []).map((st) => ({
+        prescribedExerciseId: newExercise.id,
+        orderIndex: st.orderIndex,
+        setType: st.setType,
+        targetRepsMin: st.targetRepsMin,
+        targetRepsMax: st.targetRepsMax,
+        targetWeightKg: st.targetWeightKg,
+        targetWeightPercent1rm: st.targetWeightPercent1rm,
+        targetDurationSeconds: st.targetDurationSeconds,
+        targetDistanceMeters: st.targetDistanceMeters,
+        targetRpe: st.targetRpe,
+        targetRir: st.targetRir,
+        restAfterSeconds: st.restAfterSeconds,
+        tempo: st.tempo,
+        notes: st.notes,
+      }));
+      if (sets.length) {
+        await this.prescribedSetModel.bulkCreate(sets, { transaction: tx });
+      }
+    }
+    return newWorkout;
   }
 
   async create(
@@ -573,10 +889,7 @@ export class ProgramService {
     isInstructor: boolean,
   ): Promise<Program> {
     if (dto.exercises?.length && !dto.isSingleWorkout) {
-      throw new BadRequestException(
-        'Nested exercises are only supported on single-workout programs. ' +
-          'Build a multi-week program through its workout endpoints.',
-      );
+      throw new BadRequestException(apiError('workout.exercisesOnlyOnRoutine'));
     }
 
     const attrs = {
@@ -680,6 +993,43 @@ export class ProgramService {
     }
   }
 
+  /**
+   * Drop the weeks a shortened program no longer has room for.
+   *
+   * Refused outright while anyone is mid-program: their `assigned_*` rows
+   * are their own copies and survive, but the master they were cut from
+   * would no longer contain the weeks they are still training, so the
+   * coach's view of the plan and the client's would disagree.
+   */
+  private async _shrinkToDuration(
+    program: Program,
+    durationDays: number | null | undefined,
+  ): Promise<void> {
+    if (!durationDays) return;
+    const weeks = Math.ceil(durationDays / DAYS_PER_WEEK);
+
+    const doomed = await this.workoutModel.count({
+      where: { programId: program.id, weekIndex: { [Op.gte]: weeks } },
+    });
+    if (doomed === 0) return;
+
+    const live = await this._countLiveAssignments(program.id);
+    if (live > 0) {
+      throw new ConflictException(
+        apiError('workout.cannotShortenLiveProgram', {
+          clients: live,
+          weeks,
+          days: doomed,
+        }),
+      );
+    }
+
+    // Exercises and sets cascade from program_workout.
+    await this.workoutModel.destroy({
+      where: { programId: program.id, weekIndex: { [Op.gte]: weeks } },
+    });
+  }
+
   async update(
     id: string,
     dto: UpdateProgramDto,
@@ -688,10 +1038,14 @@ export class ProgramService {
     const program = await this._loadProgram(id, ownerId);
 
     if (dto.exercises && !program.isSingleWorkout) {
-      throw new BadRequestException(
-        'Nested exercises are only supported on single-workout programs. ' +
-          'Edit a multi-week program through its workout endpoints.',
-      );
+      throw new BadRequestException(apiError('workout.exercisesOnlyOnRoutine'));
+    }
+
+    // Shortening a program is a real edit, not a relabel: the weeks that
+    // no longer fit have to go, or `duration_days` would claim a length the
+    // workouts contradict and every client's end date would be wrong.
+    if (dto.durationDays !== undefined && !program.isSingleWorkout) {
+      await this._shrinkToDuration(program, dto.durationDays);
     }
 
     // A routine's exercise list is edited as a whole, so the tree is
@@ -707,7 +1061,7 @@ export class ProgramService {
         });
         if (!workout) {
           throw new BadRequestException(
-            'This routine has no workout to put exercises in.',
+            apiError('workout.routineHasNoWorkout'),
           );
         }
         // Sets cascade from prescribed_exercise.
@@ -827,7 +1181,10 @@ export class ProgramService {
     });
     if (existing) {
       throw new ConflictException(
-        `A workout already exists at week ${dto.weekIndex + 1}, day ${dto.dayIndex + 1}.`,
+        apiError('workout.slotTaken', {
+          week: dto.weekIndex + 1,
+          day: dto.dayIndex + 1,
+        }),
       );
     }
 
@@ -866,12 +1223,10 @@ export class ProgramService {
     const seenIds = new Set<string>();
     for (const item of dto.items) {
       if (!byId.has(item.id)) {
-        throw new NotFoundException('Workout not found.');
+        throw new NotFoundException(apiError('workout.workoutNotFound'));
       }
       if (seenIds.has(item.id)) {
-        throw new BadRequestException(
-          'Each workout may appear only once in items.',
-        );
+        throw new BadRequestException(apiError('workout.reorderDuplicate'));
       }
       seenIds.add(item.id);
     }
@@ -886,7 +1241,7 @@ export class ProgramService {
       const key = `${week}:${day}`;
       if (slots.has(key)) {
         throw new ConflictException(
-          `Two workouts would occupy week ${week + 1}, day ${day + 1}.`,
+          apiError('workout.slotClash', { week: week + 1, day: day + 1 }),
         );
       }
       slots.add(key);
@@ -960,7 +1315,10 @@ export class ProgramService {
       });
       if (clash) {
         throw new ConflictException(
-          `Another workout already occupies week ${targetWeek + 1}, day ${targetDay + 1}.`,
+          apiError('workout.slotTaken', {
+            week: targetWeek + 1,
+            day: targetDay + 1,
+          }),
         );
       }
     }
@@ -1213,7 +1571,7 @@ export class ProgramService {
   private async _loadProgram(id: string, ownerId: string): Promise<Program> {
     const program = await this.programModel.findByPk(id);
     assertOwned(program, ownerId, (p) => p.ownerId, {
-      notFoundMessage: 'Program not found.',
+      notFoundMessage: apiError('workout.programNotFound'),
       onMismatch: 'hide',
     });
     return program;
@@ -1229,7 +1587,7 @@ export class ProgramService {
       where: { id: workoutId, programId },
     });
     if (!workout) {
-      throw new NotFoundException('Workout not found.');
+      throw new NotFoundException(apiError('workout.workoutNotFound'));
     }
     return workout;
   }
@@ -1245,7 +1603,7 @@ export class ProgramService {
       where: { id: exerciseRowId, programWorkoutId: workoutId },
     });
     if (!row) {
-      throw new NotFoundException('Exercise slot not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
     return row;
   }
@@ -1267,7 +1625,7 @@ export class ProgramService {
       where: { id: setId, prescribedExerciseId: exerciseRowId },
     });
     if (!set) {
-      throw new NotFoundException('Set not found.');
+      throw new NotFoundException(apiError('workout.setNotFound'));
     }
     return set;
   }
@@ -1286,14 +1644,14 @@ export class ProgramService {
       attributes: ['id', 'source', 'visibility', 'ownerId'],
     });
     if (!exercise) {
-      throw new NotFoundException('Exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
     const readable =
       exercise.source === ExerciseSource.System ||
       exercise.visibility === ExerciseVisibility.Public ||
       exercise.ownerId === ownerId;
     if (!readable) {
-      throw new NotFoundException('Exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
   }
 
@@ -1313,17 +1671,13 @@ export class ProgramService {
       dto.targetRepsMax != null &&
       dto.targetRepsMin > dto.targetRepsMax
     ) {
-      throw new BadRequestException(
-        'targetRepsMin must not exceed targetRepsMax.',
-      );
+      throw new BadRequestException(apiError('workout.repRangeInvalid'));
     }
     if (dto.targetWeightKg != null && dto.targetWeightPercent1rm != null) {
       // Soft warning — we accept both, but flag the mixed signal so
       // FE can show a yellow hint. For V1, reject outright; the FE
       // picker should be single-mode.
-      throw new BadRequestException(
-        'Pick either targetWeightKg or targetWeightPercent1rm, not both.',
-      );
+      throw new BadRequestException(apiError('workout.weightModeConflict'));
     }
   }
 

@@ -4,6 +4,7 @@ import {
   Injectable,
   OnModuleDestroy,
 } from '@nestjs/common';
+import { apiError, ApiErrorBody } from '../../common/i18n';
 
 /**
  * Per-user/per-conversation rate limit for outgoing messages.
@@ -74,7 +75,9 @@ export class MessagingRateLimitService implements OnModuleDestroy {
       `u:${userId}`,
       MessagingRateLimitService.USER_PER_MINUTE_WINDOW_MS,
       MessagingRateLimitService.USER_PER_MINUTE_LIMIT,
-      'Too many messages — slow down (max 30 per minute).',
+      apiError('messaging.tooManyMessages', {
+        max: MessagingRateLimitService.USER_PER_MINUTE_LIMIT,
+      }),
     );
 
     if (conversationId) {
@@ -83,7 +86,7 @@ export class MessagingRateLimitService implements OnModuleDestroy {
         `c:${userId}:${conversationId}`,
         MessagingRateLimitService.CONV_PER_SECOND_WINDOW_MS,
         MessagingRateLimitService.CONV_PER_SECOND_LIMIT,
-        'Too many messages in the same thread.',
+        apiError('messaging.tooManyMessagesInConversation'),
       );
     }
   }
@@ -149,7 +152,7 @@ export class MessagingRateLimitService implements OnModuleDestroy {
     key: string,
     windowMs: number,
     limit: number,
-    message: string,
+    message: ApiErrorBody,
   ): void {
     const list = this.buckets.get(key) ?? [];
     const cutoff = now - windowMs;
@@ -168,7 +171,7 @@ export class MessagingRateLimitService implements OnModuleDestroy {
       throw new HttpException(
         {
           statusCode: HttpStatus.TOO_MANY_REQUESTS,
-          message,
+          ...message,
           retryAfter: retryAfterSec,
         },
         HttpStatus.TOO_MANY_REQUESTS,

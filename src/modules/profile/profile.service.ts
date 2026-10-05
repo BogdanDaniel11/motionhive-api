@@ -30,6 +30,7 @@ import {
   InstructorClientStatus,
 } from '../client/entities/instructor-client.entity';
 import { buildSearchTerm } from '../../common/utils/search.utils';
+import { apiError } from '../../common/i18n';
 import { SearchIndexService } from '../search/search-index.service';
 import { ReviewService } from '../review/review.service';
 import { GroupService } from '../group/group.service';
@@ -170,7 +171,7 @@ export class ProfileService {
     });
 
     if (existing) {
-      throw new ConflictException('Instructor profile already exists');
+      throw new ConflictException(apiError('profile.coachProfileExists'));
     }
 
     const transaction = await this.sequelize.transaction();
@@ -236,9 +237,7 @@ export class ProfileService {
     });
 
     if (!profile) {
-      throw new NotFoundException(
-        'Instructor profile not found. Activate it first via PATCH /profile/me (with { instructor: {...} }) or POST /profile/instructor',
-      );
+      throw new NotFoundException(apiError('profile.noCoachProfile'));
     }
 
     await profile.update(dto, { transaction });
@@ -422,9 +421,7 @@ export class ProfileService {
     });
 
     if (!profile) {
-      throw new NotFoundException(
-        'Instructor profile not found or is not public',
-      );
+      throw new NotFoundException(apiError('profile.coachNotFound'));
     }
 
     return this.toPublicProfileDto(profile);
@@ -439,7 +436,7 @@ export class ProfileService {
   async getInstructorPublicProfileByHandle(handle: string) {
     const normalized = handle.trim().toLowerCase();
     if (!normalized) {
-      throw new NotFoundException('Instructor profile not found');
+      throw new NotFoundException(apiError('profile.coachNotFound'));
     }
 
     // Handle lives on `user.handle`; the endpoint only resolves
@@ -461,7 +458,7 @@ export class ProfileService {
     });
 
     if (!profile) {
-      throw new NotFoundException('Instructor profile not found');
+      throw new NotFoundException(apiError('profile.coachNotFound'));
     }
 
     return this.toPublicProfileDto(profile);
@@ -632,7 +629,7 @@ export class ProfileService {
       const current = await User.findByPk(userId, {
         attributes: ['privacySettings'],
       });
-      if (!current) throw new NotFoundException('User not found');
+      if (!current) throw new NotFoundException(apiError('user.notFound'));
       return { privacySettings: current.privacySettings ?? {} };
     }
 
@@ -642,7 +639,7 @@ export class ProfileService {
         transaction: tx,
         lock: tx.LOCK.UPDATE,
       });
-      if (!user) throw new NotFoundException('User not found');
+      if (!user) throw new NotFoundException(apiError('user.notFound'));
 
       const merged: UserPrivacySettings = {
         ...(user.privacySettings ?? {}),
@@ -677,17 +674,17 @@ export class ProfileService {
         transaction: tx,
       });
       if (conflict && conflict.id !== userId) {
-        throw new ConflictException('That handle is already taken.');
+        throw new ConflictException(apiError('profile.handleTaken'));
       }
 
       const user = await User.findByPk(userId, { transaction: tx });
-      if (!user) throw new NotFoundException('User not found');
+      if (!user) throw new NotFoundException(apiError('user.notFound'));
 
       try {
         await user.update({ handle: normalized }, { transaction: tx });
       } catch (err) {
         if (err instanceof UniqueConstraintError) {
-          throw new ConflictException('That handle is already taken.');
+          throw new ConflictException(apiError('profile.handleTaken'));
         }
         throw err;
       }
@@ -709,7 +706,7 @@ export class ProfileService {
   async getPublicUserProfileByHandle(handle: string, viewerId: string | null) {
     const normalized = handle.trim().toLowerCase();
     if (!normalized) {
-      throw new NotFoundException('Profile not found');
+      throw new NotFoundException(apiError('profile.notFound'));
     }
 
     const user = await User.findOne({
@@ -719,7 +716,7 @@ export class ProfileService {
       ),
     });
     if (!user) {
-      throw new NotFoundException('Profile not found');
+      throw new NotFoundException(apiError('profile.notFound'));
     }
 
     const audience = await this.resolveAudience(viewerId, user.id);

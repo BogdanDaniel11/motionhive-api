@@ -24,6 +24,7 @@ import {
   makeSilentLogger,
   type ModelMock,
 } from '../../../test/helpers/sequelize-mocks';
+import { notificationText } from '../../../test/helpers/notification-text';
 
 /**
  * Smoke coverage for the group-invitation flow. Owner sends, invitee
@@ -182,10 +183,39 @@ describe('InvitationService', () => {
         expect.any(String),
         'Yoga Wednesdays',
         undefined,
+        'en',
       );
       // Hashed token stored, plain token never persisted.
       expect(invitationModel.create).toHaveBeenCalledWith(
         expect.objectContaining({ token: 'hashed-token' }),
+      );
+    });
+
+    it("writes to someone without an account in the inviter's language", async () => {
+      memberModel.findOne.mockResolvedValue(null);
+      invitationModel.findOne.mockResolvedValue(null);
+      invitationModel.create.mockResolvedValue({ id: 'inv-1' });
+      jest.spyOn(User, 'findByPk').mockResolvedValue({
+        firstName: 'Iris',
+        lastName: 'Inst',
+        language: 'ro',
+      } as User);
+      // No account for the invited address.
+      jest.spyOn(User, 'findOne').mockResolvedValue(null);
+
+      await service.create('owner-1', {
+        groupId: 'g-1',
+        email: 'invitee@x.com',
+        roleName: 'USER',
+      });
+
+      expect(emailService.sendInvitationEmail).toHaveBeenCalledWith(
+        'invitee@x.com',
+        'plain-token',
+        'Iris Inst',
+        'Yoga Wednesdays',
+        undefined,
+        'ro',
       );
     });
 
@@ -354,10 +384,10 @@ describe('InvitationService', () => {
       expect(invitation.update).toHaveBeenCalledWith(
         expect.objectContaining({ declinedAt: expect.any(Date) }),
       );
-      const notifyArgs = notificationService.notify.mock.calls[0][0] as {
-        body: string;
-      };
-      expect(notifyArgs.body).not.toContain('invitee@x.com');
+      const text = notificationText(
+        notificationService.notify.mock.calls[0][0],
+      );
+      expect(text.body).not.toContain('invitee@x.com');
     });
   });
 });

@@ -4,6 +4,9 @@ import { NotificationType } from '../notification/notification.service';
 /**
  * Notification builders for the exercise module.
  *
+ * Copy lives in the catalog (`notifications.exercise.*` under
+ * src/common/i18n/catalog).
+ *
  * Builders take **primitives** (id, name, slug) — never Sequelize
  * entities. Lazy associations on an entity passed across a tx
  * boundary would explode when the outbox flushes after commit.
@@ -35,8 +38,14 @@ export function exerciseForkedForOwner(input: {
   return {
     userId: input.ownerId,
     type: NotificationType.EXERCISE_FORKED,
-    title: 'Your exercise was forked',
-    body: `${input.forkedByName} forked "${input.exerciseName}" into their library. ${input.newForkCount} ${input.newForkCount === 1 ? 'fork' : 'forks'} total.`,
+    message: {
+      key: 'exercise.forked',
+      params: {
+        name: input.forkedByName,
+        exercise: input.exerciseName,
+        count: input.newForkCount,
+      },
+    },
     // No entityId — the catalog has no per-exercise route to deep-link to.
     data: {
       screen: 'coaching/exercises',

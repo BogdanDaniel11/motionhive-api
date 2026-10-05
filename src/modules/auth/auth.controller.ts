@@ -45,14 +45,23 @@ export class AuthController {
   // Paired with account-level lockout (5 failed attempts → 15-min lock in
   // UserService.incrementFailedAttempts). This throttle is the IP-level
   // cap: stops a single IP hammering login across many accounts.
-  @Throttle({ default: { limit: 10, ttl: 900_000 } })
+  //
+  // Keyed by IP, because a login carries no token yet — so everyone behind
+  // one egress shares the budget. A gym's wifi, an office or carrier NAT can
+  // put dozens of members on a single address, and at 10 the eleventh person
+  // to arrive was refused. The account lockout is what actually stops a
+  // brute force against one account; this only has to stop a flood.
+  @Throttle({ default: { limit: 40, ttl: 900_000 } })
   @ApiEndpoint({ ...AuthDocs.login, body: LoginDto })
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
   }
 
   @Post('refresh')
-  @Throttle({ default: { limit: 10, ttl: 900000 } })
+  // Also IP-keyed — the refresh token is in the body, not a bearer header.
+  // Every session refreshes on its own schedule, so a shared address burns
+  // this faster than login does.
+  @Throttle({ default: { limit: 60, ttl: 900_000 } })
   @ApiEndpoint({ ...AuthDocs.refreshToken, body: RefreshTokenDto })
   async refresh(@Body() refreshTokenDto: RefreshTokenDto) {
     return this.authService.refreshAccessToken(refreshTokenDto.refreshToken);
@@ -136,13 +145,13 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 900000 } })
   @ApiEndpoint({ ...AuthDocs.google, body: GoogleAuthDto })
   async google(@Body() dto: GoogleAuthDto) {
-    return this.authService.registerWithGoogle(dto.idToken);
+    return this.authService.registerWithGoogle(dto.idToken, dto.language);
   }
 
   @Post('facebook')
   @Throttle({ default: { limit: 10, ttl: 900000 } })
   @ApiEndpoint({ ...AuthDocs.facebook, body: FacebookAuthDto })
   async facebook(@Body() dto: FacebookAuthDto) {
-    return this.authService.registerWithFacebook(dto.accessToken);
+    return this.authService.registerWithFacebook(dto.accessToken, dto.language);
   }
 }

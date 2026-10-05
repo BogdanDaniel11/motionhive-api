@@ -1,3 +1,4 @@
+import { formatMoney, Locale } from '../../i18n';
 import { escapeHtml } from '../../utils/html.utils';
 import {
   baseLayout,
@@ -11,6 +12,7 @@ import {
   securityNote,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
 
 /**
  * Sent to a client when their trainer sets up a recurring membership.
@@ -22,103 +24,126 @@ import {
  * confirm with a saved card or a new one. Once they pay, Stripe
  * activates the subscription. See SECURITY_NOTES.md for the
  * rationale.
+ *
+ * The price and the billing cycle arrive raw and are worded here, in
+ * the reader's language.
  */
-export function subscriptionSetupTemplate(params: {
-  instructorName: string;
+export interface SubscriptionSetupParams {
+  /** `null` when the instructor has no name on file; the copy words that case. */
+  instructorName: string | null;
   planName: string;
-  amountLabel: string;
-  cycleLabel: string | null;
+  /** Price per billing cycle, in minor units. */
+  amountCents: number;
+  currency: string;
+  /**
+   * Billing cycle unit as Stripe names it (`day`, `week`, `month`,
+   * `year`). `null` leaves the "Billed" row out.
+   */
+  interval: string | null;
+  /** How many `interval`s per charge (2 + `month` = every 2 months). Defaults to 1. */
+  intervalCount?: number | null;
   /** Kept named `setupUrl` for back-compat — this is the confirmation URL. */
   setupUrl: string;
   recipientName?: string | null;
-}): string {
-  const {
-    instructorName,
-    planName,
-    amountLabel,
-    cycleLabel,
-    setupUrl,
-    recipientName,
-  } = params;
+  /** The recipient's language. */
+  locale: Locale;
+}
 
-  const safeInstructor = escapeHtml(instructorName);
-  const safePlan = escapeHtml(planName);
-  const safeAmount = escapeHtml(amountLabel);
-  const safeCycle = escapeHtml(cycleLabel);
-  const greeting = recipientName
-    ? `Hi ${escapeHtml(recipientName)},`
-    : 'Hi there,';
+type Copy = ReturnType<typeof subscriptionCopy>;
+
+function subscriptionCopy(locale: Locale) {
+  return emailCopy(locale, 'email.subscription.setup');
+}
+
+/** "monthly", "every 2 months"… Empty for a missing or unknown interval. */
+function billedValue(
+  c: Copy,
+  interval: string | null,
+  intervalCount: number | null | undefined,
+): string {
+  if (!interval) return '';
+  const count = intervalCount && intervalCount > 1 ? intervalCount : 1;
+  return c.text('billedValue', { interval, count });
+}
+
+export function subscriptionSetupTemplate(
+  params: SubscriptionSetupParams,
+): string {
+  const { planName, amountCents, currency, setupUrl, locale } = params;
+  const c = subscriptionCopy(locale);
+  const instructor = params.instructorName || null;
+  const name = params.recipientName || null;
+  const billed = billedValue(c, params.interval, params.intervalCount);
 
   const rows =
-    dataRow('Plan', safePlan) +
-    dataRow('From', safeInstructor) +
-    dataRow('Amount', safeAmount) +
-    (cycleLabel ? dataRow('Billed', safeCycle) : '');
+    dataRow(c.html('planLabel'), escapeHtml(planName)) +
+    dataRow(
+      c.html('fromLabel'),
+      instructor ? escapeHtml(instructor) : c.html('fromFallback'),
+    ) +
+    dataRow(
+      c.html('amountLabel'),
+      escapeHtml(formatMoney(amountCents, currency, locale)),
+    ) +
+    (billed ? dataRow(c.html('billedLabel'), escapeHtml(billed)) : '');
 
   const content = `
-    ${eyebrow('CONFIRM MEMBERSHIP', 'action')}
-    ${paragraph(greeting)}
-    ${heading('Confirm your membership')}
-    ${subheading(`${safeInstructor} set up a recurring plan for you`)}
+    ${eyebrow(c.html('eyebrow'), 'action', locale)}
+    ${paragraph(c.html('greeting', { name }))}
+    ${heading(c.html('heading'))}
+    ${subheading(c.html('subheading', { instructor }))}
     ${dataCard(rows)}
-    ${paragraph("Click below to confirm and start your membership. You'll be able to use a saved card or enter a new one — and you can cancel any time from your account.")}
-    ${primaryButton('Confirm and start membership', setupUrl)}
-    ${securityNote("If you weren't expecting this, you can ignore this email — nothing is charged until you confirm. Payment is handled securely by Stripe.")}
+    ${paragraph(c.html('body'))}
+    ${primaryButton(c.html('cta'), setupUrl)}
+    ${securityNote(c.html('security'))}
   `;
 
   return baseLayout(content, {
-    preheader: `${safeInstructor} set up a ${safePlan} membership — confirm to start`,
-    footerNote:
-      "You're receiving this because a trainer set up a membership for this address on MotionHive. Nothing is charged until you confirm.",
+    preheader: c.html('preheader', { instructor, plan: planName }),
+    footerNote: c.html('footerNote'),
     category: 'action',
+    locale,
   });
 }
 
-export function subscriptionSetupTemplateText(params: {
-  instructorName: string;
-  planName: string;
-  amountLabel: string;
-  cycleLabel: string | null;
-  setupUrl: string;
-  recipientName?: string | null;
-}): string {
-  const {
-    instructorName,
-    planName,
-    amountLabel,
-    cycleLabel,
-    setupUrl,
-    recipientName,
-  } = params;
-  const greeting = recipientName ? `Hi ${recipientName},` : 'Hi there,';
+export function subscriptionSetupTemplateText(
+  params: SubscriptionSetupParams,
+): string {
+  const { planName, amountCents, currency, setupUrl, locale } = params;
+  const c = subscriptionCopy(locale);
+  const instructor = params.instructorName || null;
+  const name = params.recipientName || null;
+  const billed = billedValue(c, params.interval, params.intervalCount);
 
   const details = [
-    { label: 'Plan', value: planName },
-    { label: 'From', value: instructorName },
-    { label: 'Amount', value: amountLabel },
-    ...(cycleLabel ? [{ label: 'Billed', value: cycleLabel }] : []),
+    { label: c.text('planLabel'), value: planName },
+    {
+      label: c.text('fromLabel'),
+      value: instructor ?? c.text('fromFallback'),
+    },
+    {
+      label: c.text('amountLabel'),
+      value: formatMoney(amountCents, currency, locale),
+    },
+    ...(billed ? [{ label: c.text('billedLabel'), value: billed }] : []),
   ];
 
   return plainTextLayout({
-    preheader: `${instructorName} set up a ${planName} membership — confirm to start`,
-    footerNote:
-      "You're receiving this because a trainer set up a membership for this address on MotionHive. Nothing is charged until you confirm.",
+    preheader: c.text('preheader', { instructor, plan: planName }),
+    footerNote: c.text('footerNote'),
+    locale,
     sections: [
       {
-        heading: 'Confirm your membership',
+        heading: c.text('heading'),
         body: [
-          greeting,
-          `${instructorName} set up a ${planName} membership for you on MotionHive.`,
-          "Click below to confirm and start your membership. You'll be able to use a saved card or enter a new one — and you can cancel any time from your account.",
+          c.text('greeting', { name }),
+          `${c.text('subheading', { instructor })}.`,
+          c.text('body'),
         ],
         details,
-        ctas: [{ label: 'Confirm and start membership', url: setupUrl }],
+        ctas: [{ label: c.text('cta'), url: setupUrl }],
       },
-      {
-        body: [
-          "If you weren't expecting this, you can ignore this email — nothing is charged until you confirm. Payment is handled securely by Stripe.",
-        ],
-      },
+      { body: [c.text('security')] },
     ],
   });
 }

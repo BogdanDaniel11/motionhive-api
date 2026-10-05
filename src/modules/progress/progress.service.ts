@@ -5,6 +5,7 @@ import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { QueryTypes } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 
+import { DEFAULT_LOCALE, apiError, type Locale } from '../../common/i18n';
 import { Exercise } from '../exercise/entities/exercise.entity';
 import { ProgressRange } from './dto/progress-range.enum';
 import { RosterWindow } from './dto/roster.query.dto';
@@ -116,6 +117,8 @@ export class ProgressService {
   async overview(
     userId: string,
     range: ProgressRange,
+    /** The reader's language, for the exercise names of recent records. */
+    locale: Locale = DEFAULT_LOCALE,
   ): Promise<ProgressOverview> {
     const days = RANGE_DAYS[range];
 
@@ -125,7 +128,7 @@ export class ProgressService {
         this._totals(userId, days, days),
         this._weeklyVolume(userId, days),
         this._dailyActivity(userId, days),
-        this._recentRecords(userId),
+        this._recentRecords(userId, locale),
         this._lifetimeWorkouts(userId),
         // Streaks look past the window on purpose: a 9-week run is still
         // a 9-week run when you are looking at the last 4 weeks.
@@ -150,9 +153,16 @@ export class ProgressService {
    */
   async exerciseHistory(userId: string, exerciseId: string) {
     const exercise = await this.exerciseModel.findByPk(exerciseId, {
-      attributes: ['id', 'name', 'slug', 'kind', 'thumbnailUrl'],
+      attributes: [
+        'id',
+        'name',
+        'slug',
+        'kind',
+        'thumbnailUrl',
+        'translations',
+      ],
     });
-    if (!exercise) throw new NotFoundException('Exercise not found.');
+    if (!exercise) throw new NotFoundException(apiError('exercise.notFound'));
 
     const sessions = await this.sequelize.query<{
       workoutLogId: string;
@@ -652,7 +662,7 @@ export class ProgressService {
    * Latest estimated 1RM per exercise, with the improvement on the
    * previous one. Records are the payoff, so they are never windowed.
    */
-  private async _recentRecords(userId: string) {
+  private async _recentRecords(userId: string, locale: Locale) {
     const rows = await this.sequelize.query<{
       exerciseId: string;
       exerciseName: string;
@@ -677,7 +687,8 @@ export class ProgressService {
       )
       SELECT
         r.exercise_id  AS "exerciseId",
-        e.name         AS "exerciseName",
+        COALESCE(e.translations -> :locale ->> 'name', e.name)
+                       AS "exerciseName",
         r.weight_kg    AS "weightKg",
         r.recorded_at  AS "recordedAt",
         r.prior_kg     AS "priorKg"
@@ -687,7 +698,7 @@ export class ProgressService {
       ORDER BY r.recorded_at DESC
       LIMIT 10
       `,
-      { replacements: { userId }, type: QueryTypes.SELECT },
+      { replacements: { userId, locale }, type: QueryTypes.SELECT },
     );
 
     return rows.map((r) => {

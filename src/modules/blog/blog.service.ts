@@ -20,6 +20,7 @@ import {
 } from '../../common/dto/pagination.dto';
 import { buildSearchTerm } from '../../common/utils/search.utils';
 import { escapeHtml } from '../../common/utils/html.utils';
+import { apiError } from '../../common/i18n';
 
 interface AuthContext {
   userId: string;
@@ -203,9 +204,7 @@ export class BlogService {
     const isAdmin = auth.roles.some((r) => ADMIN_ROLES.includes(r));
     const guestName = dto.guestAuthorName?.trim();
     if (guestName && !isAdmin) {
-      throw new ForbiddenException(
-        'Only admins can publish posts under a guest byline.',
-      );
+      throw new ForbiddenException(apiError('blog.guestBylineAdminsOnly'));
     }
     const post = await this.blogPostModel.create({
       ...dto,
@@ -220,7 +219,7 @@ export class BlogService {
     });
     if (!reloaded) {
       // Should never happen — we just created it.
-      throw new BadRequestException('Failed to load created post.');
+      throw new BadRequestException(apiError('blog.reloadFailed'));
     }
     // Prerendered site only shows published posts → rebuild on publish.
     if (reloaded.isPublished) {
@@ -338,7 +337,7 @@ export class BlogService {
     });
 
     if (!post) {
-      throw new NotFoundException('Blog post not found');
+      throw new NotFoundException(apiError('blog.notFound'));
     }
 
     return this.toResponse(post);
@@ -354,7 +353,7 @@ export class BlogService {
     });
 
     if (!post) {
-      throw new NotFoundException('Blog post not found');
+      throw new NotFoundException(apiError('blog.notFound'));
     }
 
     return post;
@@ -399,9 +398,7 @@ export class BlogService {
     // author). Writers can edit their own posts but not switch
     // attribution.
     if (dto.guestAuthorName !== undefined && !isAdmin) {
-      throw new ForbiddenException(
-        'Only admins can change a post’s author attribution.',
-      );
+      throw new ForbiddenException(apiError('blog.attributionAdminsOnly'));
     }
     if (dto.guestAuthorName !== undefined) {
       const trimmed = dto.guestAuthorName?.trim();
@@ -412,9 +409,7 @@ export class BlogService {
         // Clearing the guest byline implies "back to a registered
         // author" — but admins must say which user. Without a way to
         // pass that today, refuse the empty-string clear.
-        throw new BadRequestException(
-          'guestAuthorName cannot be cleared without re-assigning to a registered author.',
-        );
+        throw new BadRequestException(apiError('blog.guestAuthorRequired'));
       }
     }
 
@@ -630,6 +625,6 @@ ${urlsXml.join('\n')}
     const isAdmin = auth.roles.some((r) => ADMIN_ROLES.includes(r));
     if (isAdmin) return;
     if (post.authorUserId && post.authorUserId === auth.userId) return;
-    throw new ForbiddenException('You can only edit your own posts');
+    throw new ForbiddenException(apiError('blog.ownPostsOnly'));
   }
 }

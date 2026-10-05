@@ -1,7 +1,6 @@
 import type { NotifyParams } from '../notification/notification.service';
 import { NotificationType } from '../notification/notification.service';
 import type { ChannelPreferences } from '../notification/entities/notification-preference.entity';
-import { escapeHtml } from '../../common/utils/html.utils';
 
 /**
  * Notification builders for the messaging module.
@@ -14,8 +13,14 @@ import { escapeHtml } from '../../common/utils/html.utils';
  * the existing repo convention, this avoids partial-load bugs and keeps
  * the builders trivial to test.
  *
- * Body preview is escaped at construction time so callers can't
- * accidentally inject HTML into the notification body / email.
+ * Copy lives in the catalog (`notifications.messaging.*` under
+ * src/common/i18n/catalog).
+ *
+ * The sender name and preview are passed RAW, like every other message
+ * param. Each surface escapes for itself: the email template runs the
+ * rendered text through `escapeHtml`, the app binds it as text, and a
+ * push is plain text. Escaping here as well would show `&amp;` to the
+ * reader.
  */
 const PREVIEW_MAX_LENGTH = 80;
 
@@ -30,7 +35,7 @@ export interface MessageReceivedArgs {
   conversationId: string;
   /** Display name of the sender (firstName + lastName). null → "Someone". */
   senderName: string | null;
-  /** Plaintext body — will be truncated + escaped before render. */
+  /** Plaintext body — truncated here, escaped by whatever renders it. */
   preview: string;
   /**
    * When true, the recipient has already received an email for this
@@ -51,13 +56,6 @@ export interface MessageReceivedArgs {
 }
 
 export function messageReceived(args: MessageReceivedArgs): NotifyParams {
-  const who = args.senderName ?? 'Someone';
-  const preview = escapeHtml(truncatePreview(args.preview));
-  const title = `New message from ${escapeHtml(who)}`;
-  const body = args.hidePreviewInEmail
-    ? `${escapeHtml(who)} sent you a new message.`
-    : `${escapeHtml(who)}: ${preview}`;
-
   // Channel policy for MESSAGE_RECEIVED (matches Slack/WhatsApp):
   //   - in_app:  ALWAYS off. The Messages sidebar badge + the
   //              conversation row's unread count are the persistent
@@ -80,13 +78,19 @@ export function messageReceived(args: MessageReceivedArgs): NotifyParams {
   const params: NotifyParams = {
     userId: args.recipientId,
     type: NotificationType.MESSAGE_RECEIVED,
-    title,
-    body,
+    message: args.hidePreviewInEmail
+      ? { key: 'messaging.receivedPrivate', params: { name: args.senderName } }
+      : {
+          key: 'messaging.received',
+          params: {
+            name: args.senderName,
+            preview: truncatePreview(args.preview),
+          },
+        },
     data: {
       screen: 'messages',
       queryParams: { conversationId: args.conversationId },
     },
-    ctaLabel: 'Open conversation',
     channelOverride,
   };
 

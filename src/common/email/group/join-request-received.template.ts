@@ -1,3 +1,4 @@
+import type { Locale } from '../../i18n';
 import { escapeHtml } from '../../utils/html.utils';
 import {
   baseLayout,
@@ -10,6 +11,17 @@ import {
   primaryButton,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
+
+export interface GroupJoinRequestReceivedParams {
+  ownerFirstName: string | null;
+  /** `null` when the requester's name could not be resolved. */
+  requesterName: string | null;
+  groupName: string;
+  reviewLink: string;
+  message?: string | null;
+  locale: Locale;
+}
 
 /**
  * Sent to a group owner when someone requests to join their APPROVAL-
@@ -21,59 +33,69 @@ import {
  * `reviewLink` covers both actions, same shape as
  * `client/request-to-instructor`.
  */
-export function groupJoinRequestReceivedTemplate(params: {
-  ownerFirstName: string | null;
-  requesterName: string;
-  groupName: string;
-  reviewLink: string;
-  message?: string;
-}): string {
-  const { ownerFirstName, requesterName, groupName, reviewLink, message } =
-    params;
-  const safeFirst = escapeHtml(ownerFirstName);
-  const safeRequester = escapeHtml(requesterName);
-  const safeGroup = escapeHtml(groupName);
-  const safeMessage = escapeHtml(message);
-  const greeting = ownerFirstName ? `Hi ${safeFirst},` : 'Hi there,';
+export function groupJoinRequestReceivedTemplate(
+  params: GroupJoinRequestReceivedParams,
+): string {
+  const {
+    ownerFirstName,
+    requesterName,
+    groupName,
+    reviewLink,
+    message,
+    locale,
+  } = params;
+  const c = emailCopy(locale, 'email.group.joinRequestReceived');
+  const name = requesterName || null;
+  const requesterCard = name
+    ? personCard({ name: escapeHtml(name), role: c.html('cardRole') })
+    : '';
+  const messageBlock = message
+    ? calloutBox('info', `<em>${c.html('quote', { message })}</em>`)
+    : '';
 
   const content = `
-    ${eyebrow('JOIN REQUEST', 'request')}
-    ${paragraph(greeting)}
-    ${heading('New request to join your group')}
-    ${subheading(`${safeRequester} wants to join ${safeGroup}`)}
-    ${personCard({ name: requesterName, role: 'Wants to join your group' })}
-    ${paragraph(`<strong>${safeRequester}</strong> requested to join <strong>${safeGroup}</strong>. Review their profile and approve or decline.`)}
-    ${message ? calloutBox('info', `<em>"${safeMessage}"</em>`) : ''}
-    ${primaryButton('Review request', reviewLink)}
+    ${eyebrow(c.html('eyebrow'), 'request', locale)}
+    ${paragraph(c.html('greeting', { firstName: ownerFirstName || null }))}
+    ${heading(c.html('heading'))}
+    ${subheading(c.html('subheading', { name, group: groupName }))}
+    ${requesterCard}
+    ${paragraph(c.html('body', { name, group: groupName }))}
+    ${messageBlock}
+    ${primaryButton(c.html('cta'), reviewLink)}
   `;
 
   return baseLayout(content, {
-    preheader: `${requesterName} wants to join ${groupName}`,
+    preheader: c.html('preheader', { name, group: groupName }),
     category: 'request',
+    locale,
   });
 }
 
-export function groupJoinRequestReceivedTemplateText(params: {
-  ownerFirstName: string | null;
-  requesterName: string;
-  groupName: string;
-  reviewLink: string;
-  message?: string;
-}): string {
-  const { ownerFirstName, requesterName, groupName, reviewLink, message } =
-    params;
-  const greeting = ownerFirstName ? `Hi ${ownerFirstName},` : 'Hi there,';
+export function groupJoinRequestReceivedTemplateText(
+  params: GroupJoinRequestReceivedParams,
+): string {
+  const {
+    ownerFirstName,
+    requesterName,
+    groupName,
+    reviewLink,
+    message,
+    locale,
+  } = params;
+  const c = emailCopy(locale, 'email.group.joinRequestReceived');
+  const name = requesterName || null;
   return plainTextLayout({
-    preheader: `${requesterName} wants to join ${groupName}`,
+    preheader: c.text('preheader', { name, group: groupName }),
+    locale,
     sections: [
       {
-        heading: 'New request to join your group',
+        heading: c.text('heading'),
         body: [
-          greeting,
-          `${requesterName} requested to join ${groupName}. Review their profile and approve or decline.`,
-          ...(message ? [`Message: "${message}"`] : []),
+          c.text('greeting', { firstName: ownerFirstName || null }),
+          c.text('body', { name, group: groupName }),
+          ...(message ? [c.text('message', { message })] : []),
         ],
-        ctas: [{ label: 'Review request', url: reviewLink }],
+        ctas: [{ label: c.text('cta'), url: reviewLink }],
       },
     ],
   });

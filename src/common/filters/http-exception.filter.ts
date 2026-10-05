@@ -9,6 +9,13 @@ import {
 import type { LoggerService } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+import {
+  ErrorKey,
+  isApiErrorBody,
+  renderApiError,
+  requestLocale,
+  translate,
+} from '../i18n';
 
 /**
  * Global Exception Filter
@@ -26,6 +33,33 @@ import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
  * - Stack traces
  * - Environment variables
  */
+/** `req.user` once the JWT guard has run; absent on public routes. */
+type RequestWithUser = Request & { user?: { language?: string | null } };
+
+/** Body fields the filter builds itself, or keeps from the client. */
+const RESERVED_BODY_FIELDS = new Set([
+  'statusCode',
+  'message',
+  'messageKey',
+  'messageParams',
+  'details',
+  'error',
+  'requestId',
+  'timestamp',
+  'path',
+]);
+
+/** Nest's default status texts, and our sentence for each. */
+const GENERIC_BY_STATUS_TEXT: Record<string, ErrorKey> = {
+  'Bad Request': 'common.badRequest',
+  Unauthorized: 'common.unauthorized',
+  Forbidden: 'common.forbidden',
+  'Forbidden resource': 'common.forbidden',
+  'Not Found': 'common.notFound',
+  Conflict: 'common.conflict',
+  'Payload Too Large': 'common.tooLarge',
+};
+
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   constructor(
@@ -50,9 +84,34 @@ export class HttpExceptionFilter implements ExceptionFilter {
     // rather than an `as any` cast so we can't accidentally read off a
     // string.
     let message: string | string[];
+    /** Shown to the caller; `message` above stays English for the log. */
+    let clientMessage: string | string[] | null = null;
+    let details: string[] | undefined;
+    /**
+     * Machine-readable fields a thrower adds next to the message
+     * (`code: 'ALREADY_BOOKED'`, `retryAfter: 42`). Passed through so
+     * the apps can act on them; the message fields are handled above.
+     */
+    let extras: Record<string, unknown> = {};
     if (isHttpException) {
       const exceptionResponse: unknown = exception.getResponse();
-      if (typeof exceptionResponse === 'string') {
+      if (exceptionResponse && typeof exceptionResponse === 'object') {
+        extras = Object.fromEntries(
+          Object.entries(exceptionResponse).filter(
+            ([key]) => !RESERVED_BODY_FIELDS.has(key),
+          ),
+        );
+      }
+      if (isApiErrorBody(exceptionResponse)) {
+        // A catalog message: answer in the caller's language.
+        message = exceptionResponse.message;
+        clientMessage = renderApiError(
+          exceptionResponse,
+          requestLocale(request as RequestWithUser),
+        );
+        const raw = (exceptionResponse as { details?: unknown }).details;
+        if (Array.isArray(raw)) details = raw as string[];
+      } else if (typeof exceptionResponse === 'string') {
         message = exceptionResponse;
       } else if (
         exceptionResponse &&
@@ -87,10 +146,25 @@ export class HttpExceptionFilter implements ExceptionFilter {
       );
     }
 
+    // A bare exception (`new NotFoundException()`) or a guard's refusal
+    // carries Nest's English status text ("Not Found", "Unauthorized");
+    // answer those with our own sentence, in the caller's language.
+    if (clientMessage === null && typeof message === 'string') {
+      const generic = GENERIC_BY_STATUS_TEXT[message];
+      if (generic) {
+        clientMessage = translate(
+          requestLocale(request as RequestWithUser),
+          `errors.${generic}`,
+        );
+      }
+    }
+
     // Build error response
     const errorResponse = {
       statusCode: status,
-      message,
+      ...extras,
+      message: clientMessage ?? message,
+      ...(details ? { details } : {}),
       error: isHttpException
         ? exception.constructor.name
         : 'InternalServerError',

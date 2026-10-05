@@ -11,6 +11,7 @@ import {
   UpdatedAt,
   DeletedAt,
 } from 'sequelize-typescript';
+import type { ContentTranslations } from '../../../common/i18n';
 import { User } from '../../user/entities/user.entity';
 import { Muscle } from './muscle.entity';
 import { Equipment } from './equipment.entity';
@@ -189,6 +190,14 @@ export class Exercise extends Model {
 
   @Column({ type: DataType.STRING(50), allowNull: true })
   declare hkActivityType: string | null;
+
+  /**
+   * Other languages of name, description, instructions, on MotionHive's own rows only
+   * (migration 063). Swapped in per reader by ContentLocaleInterceptor;
+   * never accepted from a request.
+   */
+  @Column({ type: DataType.JSONB, allowNull: true })
+  declare translations: ContentTranslations | null;
 
   @CreatedAt declare createdAt: Date;
   @UpdatedAt declare updatedAt: Date;

@@ -14,6 +14,7 @@ import { ApiEndpoint } from '../../common/decorators/api-response.decorator';
 import { ProgressDocs } from '../../common/docs/progress.docs';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { requestLocale } from '../../common/i18n';
 import type { AuthenticatedRequest } from '../../common/types/authenticated-request';
 import { ProgressOverviewQueryDto } from './dto/progress-overview.query.dto';
 import { ProgressRange } from './dto/progress-range.enum';
@@ -43,6 +44,7 @@ export class ProgressController {
     return this.progressService.overview(
       req.user.id,
       query.range ?? ProgressRange.TwelveWeeks,
+      requestLocale(req),
     );
   }
 

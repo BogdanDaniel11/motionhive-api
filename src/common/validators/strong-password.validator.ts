@@ -40,8 +40,9 @@ export class IsStrongPasswordConstraint implements ValidatorConstraintInterface 
     return true;
   }
 
+  /** A catalog key: the ValidationPipe answers with its translation. */
   defaultMessage() {
-    return 'Password must contain at least 8 characters, including uppercase, lowercase, number, and special character (!@#$%^&*...)';
+    return 'errors.validation.weakPassword';
   }
 }
 

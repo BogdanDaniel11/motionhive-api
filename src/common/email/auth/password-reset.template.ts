@@ -1,3 +1,4 @@
+import type { Locale } from '../../i18n';
 import {
   baseLayout,
   eyebrow,
@@ -9,46 +10,50 @@ import {
   securityNote,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
 
 /**
  * Fired by `POST /auth/forgot-password`. The link contains a
  * single-use token (1h TTL) generated server-side; nothing about the
  * user's password is leaked here.
  */
-export function passwordResetTemplate(resetLink: string): string {
+export function passwordResetTemplate(
+  resetLink: string,
+  locale: Locale,
+): string {
+  const c = emailCopy(locale, 'email.auth.passwordReset');
   const content = `
-    ${eyebrow('ACTION REQUIRED', 'action')}
-    ${heading('Reset your password')}
-    ${subheading('We received a password reset request')}
-    ${paragraph("Click the button below to choose a new password. If you didn't make this request, you can safely ignore this email — your password won't change.")}
-    ${primaryButton('&#128273; Reset password', resetLink)}
-    ${expiryNote('This reset link expires in <strong>1 hour</strong> and can only be used once.')}
-    ${securityNote("If you didn't request a password reset, someone may have entered your email by mistake. No changes have been made to your account.")}
+    ${eyebrow('', 'action', locale)}
+    ${heading(c.html('heading'))}
+    ${subheading(c.html('subheading'))}
+    ${paragraph(c.html('body'))}
+    ${primaryButton(`&#128273; ${c.html('cta')}`, resetLink)}
+    ${expiryNote(c.html('expiry'), locale)}
+    ${securityNote(c.html('security'))}
   `;
 
   return baseLayout(content, {
-    preheader: 'Reset your MotionHive password',
+    preheader: c.html('preheader'),
     category: 'action',
+    locale,
   });
 }
 
-export function passwordResetTemplateText(resetLink: string): string {
+export function passwordResetTemplateText(
+  resetLink: string,
+  locale: Locale,
+): string {
+  const c = emailCopy(locale, 'email.auth.passwordReset');
   return plainTextLayout({
-    preheader: 'Reset your MotionHive password',
+    preheader: c.text('preheader'),
+    locale,
     sections: [
       {
-        heading: 'Reset your password',
-        body: [
-          "We received a password reset request. Click the link below to choose a new password. If you didn't make this request, you can safely ignore this email — your password won't change.",
-        ],
-        ctas: [{ label: 'Reset password', url: resetLink }],
+        heading: c.text('heading'),
+        body: [`${c.text('subheading')}. ${c.text('body')}`],
+        ctas: [{ label: c.text('cta'), url: resetLink }],
       },
-      {
-        body: [
-          'This reset link expires in 1 hour and can only be used once.',
-          "If you didn't request a password reset, someone may have entered your email by mistake. No changes have been made to your account.",
-        ],
-      },
+      { body: [c.text('expiry'), c.text('security')] },
     ],
   });
 }

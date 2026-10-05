@@ -24,6 +24,7 @@ import { PostDocs } from '../../common/docs/post.docs';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { CloudinaryService } from '../../common/services/cloudinary.service';
 import { isSupportedImage } from '../../common/utils/image.utils';
+import { apiError } from '../../common/i18n';
 import { PostService } from './post.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
@@ -54,7 +55,7 @@ export class PostController {
     @UploadedFile() file: Express.Multer.File,
   ): Promise<{ url: string; publicId: string }> {
     if (!file) {
-      throw new BadRequestException('No file provided.');
+      throw new BadRequestException(apiError('post.noFile'));
     }
     // mimetype comes from the multipart header — trivially spoofable.
     // Sniff the magic bytes too so we reject e.g. an .exe relabelled as
@@ -64,11 +65,13 @@ export class PostController {
       !file.mimetype?.startsWith('image/') ||
       !isSupportedImage(file.buffer)
     ) {
-      throw new BadRequestException('Only image files are accepted.');
+      throw new BadRequestException(apiError('post.imageOnly'));
     }
-    const MAX_BYTES = 5 * 1024 * 1024;
-    if (file.size > MAX_BYTES) {
-      throw new BadRequestException('File is larger than 5 MB.');
+    const MAX_MB = 5;
+    if (file.size > MAX_MB * 1024 * 1024) {
+      throw new BadRequestException(
+        apiError('post.imageTooLarge', { maxMb: MAX_MB }),
+      );
     }
     return this.cloudinaryService.uploadImage(file, {
       resource: 'posts',

@@ -1,4 +1,6 @@
 import { NotificationType } from '../notification/notification.service';
+import { genericNotificationTemplate } from '../../common/email';
+import { notificationText } from '../../../test/helpers/notification-text';
 import { messageReceived } from './notifications';
 
 describe('messaging notifications builder — Stage 6', () => {
@@ -17,39 +19,64 @@ describe('messaging notifications builder — Stage 6', () => {
     expect(p.type).toBe(NotificationType.MESSAGE_RECEIVED);
     expect(p.data?.screen).toBe('messages');
     expect(p.data?.queryParams).toEqual({ conversationId: 'conv-id' });
-    expect(p.ctaLabel).toBe('Open conversation');
+    expect(notificationText(p).cta).toBe('Open conversation');
   });
 
   it('uses "Someone" when senderName is null', () => {
+    const text = notificationText(
+      messageReceived({ ...base, senderName: null }),
+    );
+    expect(text.title).toContain('Someone');
+    expect(text.body).toContain('Someone');
+  });
+
+  it('says it in Romanian for a Romanian reader', () => {
     const p = messageReceived({ ...base, senderName: null });
-    expect(p.title).toContain('Someone');
-    expect(p.body).toContain('Someone');
+    expect(notificationText(p, 'ro')).toMatchObject({
+      title: 'Ai un mesaj nou',
+      body: 'Mesaj nou: See you at 5pm',
+      cta: 'Deschide conversația',
+    });
   });
 
   it('truncates the preview to 80 chars with an ellipsis', () => {
     const long = 'x'.repeat(200);
-    const p = messageReceived({ ...base, preview: long });
+    const text = notificationText(messageReceived({ ...base, preview: long }));
     // The preview portion (post "Alice Smith: ") has length 80 max.
-    const previewPart = p.body.split(': ').slice(1).join(': ');
+    const previewPart = text.body.split(': ').slice(1).join(': ');
     expect(previewPart.length).toBe(80);
     expect(previewPart.endsWith('…')).toBe(true);
   });
 
-  it('escapes HTML in sender name and preview body', () => {
-    const p = messageReceived({
-      ...base,
-      senderName: 'Alice <script>',
-      preview: 'try <img src=x onerror=alert(1)>',
-    });
-    expect(p.title).not.toContain('<script>');
-    expect(p.body).not.toContain('<img');
-    expect(p.body).toContain('&lt;');
+  it('passes the name and preview raw; the email escapes them once', () => {
+    const text = notificationText(
+      messageReceived({
+        ...base,
+        senderName: 'Alice <script>',
+        preview: 'try <img src=x onerror=alert(1)> & win',
+      }),
+    );
+    // Raw here: the app binds this as text and a push is plain text, so
+    // an entity would be shown to the reader literally.
+    expect(text.body).toBe(
+      'Alice <script>: try <img src=x onerror=alert(1)> & win',
+    );
+
+    const html = genericNotificationTemplate({ ...text, locale: 'en' });
+    expect(html).not.toContain('<script>');
+    expect(html).not.toContain('<img src=x');
+    expect(html).toContain('Alice &lt;script&gt;');
+    // Escaped once, not twice.
+    expect(html).toContain('&amp; win');
+    expect(html).not.toContain('&amp;amp;');
   });
 
   it('omits the preview when hidePreviewInEmail=true', () => {
-    const p = messageReceived({ ...base, hidePreviewInEmail: true });
-    expect(p.body).not.toContain('See you at 5pm');
-    expect(p.body).toContain('sent you a new message');
+    const text = notificationText(
+      messageReceived({ ...base, hidePreviewInEmail: true }),
+    );
+    expect(text.body).not.toContain('See you at 5pm');
+    expect(text.body).toContain('sent you a new message');
   });
 
   it('always suppresses in_app; turns email off when suppressEmail=true', () => {

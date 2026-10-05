@@ -63,6 +63,7 @@ describe('NotificationController', () => {
       page: 2,
       limit: 50,
       unreadOnly: true,
+      locale: 'en',
     });
   });
 

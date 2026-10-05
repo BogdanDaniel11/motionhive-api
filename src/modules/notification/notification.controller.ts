@@ -16,6 +16,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiTags } from '@nestjs/swagger';
 import { ApiEndpoint } from '../../common/decorators/api-response.decorator';
 import { NotificationDocs } from '../../common/docs/notification.docs';
+import { toLocale } from '../../common/i18n';
 import type { AuthenticatedRequest } from '../../common/types/authenticated-request';
 import { NotificationReceiptService } from './services/notification-receipt.service';
 import { ListNotificationsDto } from './dto/list-notifications.dto';
@@ -42,7 +43,8 @@ export class NotificationController {
       page: query.page ?? 1,
       limit: query.limit ?? 20,
       unreadOnly: query.unreadOnly,
-      categories: query.category,
+      category: query.category,
+      locale: toLocale(req.user.language),
     });
   }
 

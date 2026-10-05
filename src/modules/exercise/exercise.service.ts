@@ -8,8 +8,20 @@ import {
 import type { LoggerService } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
-import { Op, QueryTypes, Transaction, WhereOptions, literal } from 'sequelize';
+import {
+  Op,
+  Order,
+  QueryTypes,
+  Transaction,
+  WhereOptions,
+  literal,
+} from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
+import { apiError, Locale } from '../../common/i18n';
+import {
+  escapeLikeWildcards,
+  normalizeSearchTerm,
+} from '../../common/utils/search.utils';
 import { assertOwned } from '../../common/utils/ownership.utils';
 import {
   buildPaginatedResponse,
@@ -128,7 +140,11 @@ export class ExerciseService {
    */
   async list(filter: ListExercisesQueryDto, principal: PrincipalContext) {
     const where = this.buildListWhere(filter, principal);
-    const order = this.buildOrder(filter.sort ?? ExerciseSortKey.Name);
+    const order = this.buildOrder(
+      filter.sort ?? ExerciseSortKey.Name,
+      principal.locale,
+      filter.search,
+    );
 
     const page = filter.page ?? 1;
     const limit = filter.limit ?? 20;
@@ -165,11 +181,11 @@ export class ExerciseService {
     });
 
     if (!exercise) {
-      throw new NotFoundException('Exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
 
     if (!this.canRead(exercise, principal)) {
-      throw new NotFoundException('Exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
 
     return exercise;
@@ -238,11 +254,11 @@ export class ExerciseService {
     // We still gate via assertOwned for any future custom rows with NULL
     // owner_id (none today, but the check is the single source of truth).
     assertOwned(exercise, principal.userId, (e) => e.ownerId, {
-      notFoundMessage: 'Exercise not found.',
+      notFoundMessage: apiError('exercise.notFound'),
       onMismatch: 'hide',
     });
     if (exercise.source === ExerciseSource.System) {
-      throw new NotFoundException('Exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
 
     if (dto.muscles) {
@@ -316,11 +332,11 @@ export class ExerciseService {
   async softDelete(id: string, principal: PrincipalContext): Promise<void> {
     const exercise = await this.exerciseModel.findByPk(id);
     assertOwned(exercise, principal.userId, (e) => e.ownerId, {
-      notFoundMessage: 'Exercise not found.',
+      notFoundMessage: apiError('exercise.notFound'),
       onMismatch: 'hide',
     });
     if (exercise.source === ExerciseSource.System) {
-      throw new NotFoundException('Exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
 
     // Hard-delete is blocked by ON DELETE RESTRICT on prescribed/assigned/
@@ -359,17 +375,15 @@ export class ExerciseService {
     });
 
     if (!source) {
-      throw new NotFoundException('Exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
     if (source.visibility !== ExerciseVisibility.Public) {
       // Hide existence — a public exercise was made private after
       // someone tapped Fork; don't leak that it still exists.
-      throw new NotFoundException('Exercise not found.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
     if (source.ownerId === principal.userId) {
-      throw new BadRequestException(
-        'You cannot fork your own exercise. Use Duplicate instead.',
-      );
+      throw new BadRequestException(apiError('exercise.cannotForkOwn'));
     }
 
     // Locked decision §17 anti-spam: one live fork per (owner, source).
@@ -384,9 +398,7 @@ export class ExerciseService {
       attributes: ['id'],
     });
     if (existingFork) {
-      throw new ConflictException(
-        'You already have a fork of this exercise in your library.',
-      );
+      throw new ConflictException(apiError('exercise.alreadyForked'));
     }
 
     const slug = await this.allocateSlug(source.name, principal.userId);
@@ -550,8 +562,20 @@ export class ExerciseService {
         break;
     }
 
-    if (filter.search) {
-      conds.push({ name: { [Op.iLike]: `%${filter.search.trim()}%` } });
+    const term = this.searchTerm(filter.search);
+    if (term) {
+      // `search_name` holds the English name and every translated one,
+      // lowercased and without diacritics (migration 063), so "squats"
+      // finds "Genuflexiuni cu haltera" whatever language the reader is in.
+      // A contains match, or a close match (`<%`, word similarity) that
+      // forgives plurals and a missing letter.
+      const pattern = this.sequelize.escape(`%${escapeLikeWildcards(term)}%`);
+      const word = this.sequelize.escape(term);
+      conds.push(
+        literal(
+          `("Exercise".search_name LIKE ${pattern} OR ${word} <% "Exercise".search_name)`,
+        ) as unknown as WhereOptions<Exercise>,
+      );
     }
     if (filter.kind?.length) conds.push({ kind: { [Op.in]: filter.kind } });
     if (filter.level?.length) conds.push({ level: { [Op.in]: filter.level } });
@@ -596,7 +620,27 @@ export class ExerciseService {
     return { [Op.and]: conds };
   }
 
-  private buildOrder(sort: ExerciseSortKey): Array<[string, 'ASC' | 'DESC']> {
+  /** Lowercase, no diacritics, single spaces: matches `search_name`. */
+  private searchTerm(search: string | undefined): string {
+    return search ? normalizeSearchTerm(search).toLowerCase() : '';
+  }
+
+  private buildOrder(
+    sort: ExerciseSortKey,
+    locale: Locale,
+    search: string | undefined,
+  ): Order {
+    // The name the reader sees, folded, so Romanian names sort where a
+    // Romanian expects them ("Împins" with the I's, not after Z).
+    const byName: Order = [
+      [
+        literal(
+          `fold_for_search(COALESCE("Exercise".translations -> ${this.sequelize.escape(locale)} ->> 'name', "Exercise".name))`,
+        ),
+        'ASC',
+      ],
+      ['id', 'ASC'],
+    ];
     switch (sort) {
       case ExerciseSortKey.Newest:
         return [['createdAt', 'DESC']];
@@ -605,13 +649,21 @@ export class ExerciseService {
         // applied to a non-public-filtered scan still works but the planner
         // falls back to a seq scan. Acceptable — list queries always pair
         // this sort with `ownership='public-others'` from the UI.
-        return [
-          ['forkCount', 'DESC'],
-          ['name', 'ASC'],
-        ];
+        return [['forkCount', 'DESC'], ...byName];
       case ExerciseSortKey.Name:
-      default:
-        return [['name', 'ASC']];
+      default: {
+        // While searching, the best match leads: names that contain what
+        // was typed, then close matches by how close, then A to Z.
+        const term = this.searchTerm(search);
+        if (!term) return byName;
+        const pattern = this.sequelize.escape(`%${escapeLikeWildcards(term)}%`);
+        const word = this.sequelize.escape(term);
+        return [
+          [literal(`("Exercise".search_name LIKE ${pattern})`), 'DESC'],
+          [literal(`word_similarity(${word}, "Exercise".search_name)`), 'DESC'],
+          ...byName,
+        ];
+      }
     }
   }
 
@@ -747,20 +799,20 @@ export class ExerciseService {
   ): void {
     const primaries = muscles.filter((m) => m.role === MuscleRole.Primary);
     if (primaries.length === 0) {
-      throw new BadRequestException('At least one PRIMARY muscle is required.');
+      throw new BadRequestException(apiError('exercise.primaryMuscleRequired'));
     }
     if (primaries.length > MAX_PRIMARY_MUSCLES) {
       throw new BadRequestException(
-        `Too many PRIMARY muscles (max ${MAX_PRIMARY_MUSCLES}).`,
+        apiError('exercise.tooManyPrimaryMuscles', {
+          max: MAX_PRIMARY_MUSCLES,
+        }),
       );
     }
     const seen = new Set<string>();
     for (const m of muscles) {
       const key = `${m.muscleId}:${m.role}`;
       if (seen.has(key)) {
-        throw new BadRequestException(
-          'Duplicate muscle/role row in the input.',
-        );
+        throw new BadRequestException(apiError('exercise.duplicateMuscle'));
       }
       seen.add(key);
     }
@@ -826,7 +878,7 @@ export class ExerciseService {
       });
       if (!conflict) return candidate;
     }
-    throw new BadRequestException('Could not allocate a unique slug.');
+    throw new BadRequestException(apiError('exercise.tooManyWithName'));
   }
 
   private async reloadDetail(id: string): Promise<Exercise> {
@@ -835,7 +887,7 @@ export class ExerciseService {
     });
     if (!reloaded) {
       // Should not happen — we just wrote it. Surface as 500 via a generic throw.
-      throw new NotFoundException('Exercise not found after write.');
+      throw new NotFoundException(apiError('exercise.notFound'));
     }
     return reloaded;
   }

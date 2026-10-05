@@ -1,13 +1,13 @@
 import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class SendFriendInviteDto {
-  @IsEmail({}, { message: 'A valid email is required.' })
+  @IsEmail({}, { message: 'errors.validation.invalidEmail' })
   email!: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(500, {
-    message: 'Personal message must be 500 characters or fewer.',
+    message: 'errors.validation.personalMessageTooLong',
   })
   personalMessage?: string;
 }

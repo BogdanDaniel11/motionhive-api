@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   createParamDecorator,
 } from '@nestjs/common';
+import { Locale, requestLocale } from '../i18n';
 import type { AuthenticatedRequest } from '../types/authenticated-request';
 
 /**
@@ -15,6 +16,13 @@ export interface PrincipalContext {
   /** Treat ADMIN / SUPER_ADMIN as INSTRUCTOR for catalog-write purposes. */
   isInstructor: boolean;
   displayName?: string;
+  /**
+   * The language this request is answered in. Content is localised on the
+   * way out by ContentLocaleInterceptor; services need it only where they
+   * search or sort by a translated name, or write text into a row the
+   * person will own (a copy of a starter routine, a workout log).
+   */
+  locale: Locale;
 }
 
 const INSTRUCTOR_ROLES = new Set(['INSTRUCTOR', 'ADMIN', 'SUPER_ADMIN']);
@@ -51,6 +59,7 @@ export const Principal = createParamDecorator(
       displayName:
         [user.firstName, user.lastName].filter(Boolean).join(' ').trim() ||
         undefined,
+      locale: requestLocale(req),
     };
   },
 );

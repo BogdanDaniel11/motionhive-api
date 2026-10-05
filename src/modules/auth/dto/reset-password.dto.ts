@@ -33,6 +33,8 @@ export class ResetPasswordDto {
   })
   @IsString()
   @IsNotEmpty()
-  @Match('newPassword', { message: 'Passwords do not match' })
+  @Match('newPassword', {
+    message: 'errors.validation.passwordsDoNotMatch',
+  })
   confirmPassword: string;
 }

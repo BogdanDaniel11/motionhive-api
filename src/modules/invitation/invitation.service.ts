@@ -26,6 +26,8 @@ import {
   groupInvitationAccepted,
   groupInvitationDeclined,
 } from '../group/notifications';
+import { apiError, toLocale } from '../../common/i18n';
+import type { Locale } from '../../common/i18n';
 
 /**
  * Invitation Service
@@ -86,9 +88,7 @@ export class InvitationService {
     });
 
     if (existingMember) {
-      throw new BadRequestException(
-        'This user is already a member of the group',
-      );
+      throw new BadRequestException(apiError('invitation.alreadyMember'));
     }
 
     // Find the role to assign
@@ -106,9 +106,7 @@ export class InvitationService {
     });
 
     if (existing && existing.expiresAt > new Date()) {
-      throw new BadRequestException(
-        'An active invitation already exists for this email',
-      );
+      throw new BadRequestException(apiError('invitation.alreadyInvited'));
     }
 
     // Generate token — hash it for storage, keep plain for the link
@@ -121,11 +119,11 @@ export class InvitationService {
 
     // Get inviter name for email
     const inviter = await User.findByPk(inviterId, {
-      attributes: ['firstName', 'lastName'],
+      attributes: ['firstName', 'lastName', 'language'],
     });
     const inviterName = inviter
       ? `${inviter.firstName} ${inviter.lastName}`
-      : 'Group Owner';
+      : null;
 
     const invitation = await this.invitationModel.create({
       inviterId: inviterId,
@@ -150,6 +148,7 @@ export class InvitationService {
         inviterName,
         group.name,
         dto.message,
+        await this.localeForEmail(dto.email, inviter?.language),
       )
       .catch((err: Error) =>
         this.logger.error(
@@ -215,26 +214,24 @@ export class InvitationService {
     });
 
     if (!invitation) {
-      throw new NotFoundException('Invitation not found');
+      throw new NotFoundException(apiError('invitation.notFound'));
     }
 
     if (invitation.acceptedAt) {
-      throw new BadRequestException('Invitation has already been accepted');
+      throw new BadRequestException(apiError('invitation.alreadyAccepted'));
     }
 
     if (invitation.declinedAt) {
-      throw new BadRequestException('Invitation has been declined');
+      throw new BadRequestException(apiError('invitation.declined'));
     }
 
     if (invitation.expiresAt < new Date()) {
-      throw new BadRequestException('Invitation has expired');
+      throw new BadRequestException(apiError('invitation.expired'));
     }
 
     // Verify the accepting user's email matches the invitation email
     if (invitation.email.toLowerCase() !== userEmail.toLowerCase()) {
-      throw new ForbiddenException(
-        'This invitation was sent to a different email address',
-      );
+      throw new ForbiddenException(apiError('invitation.wrongEmail'));
     }
 
     // Wrap in transaction: addMember + assignRole + markAccepted must all succeed or all fail
@@ -272,7 +269,7 @@ export class InvitationService {
 
     // Email + bell notification for the inviter.
     const inviterUser = await User.findByPk(invitation.inviterId, {
-      attributes: ['email', 'firstName'],
+      attributes: ['email', 'firstName', 'language'],
     });
     const acceptingUser = await User.findByPk(userId, {
       attributes: ['firstName', 'lastName'],
@@ -284,7 +281,8 @@ export class InvitationService {
           inviterUser.email,
           inviterUser.firstName,
           accepterName,
-          invitation.group?.name || 'your group',
+          invitation.group?.name ?? null,
+          toLocale(inviterUser.language),
         )
         .catch((err: unknown) =>
           this.logger.warn(
@@ -338,18 +336,16 @@ export class InvitationService {
     });
 
     if (!invitation) {
-      throw new NotFoundException('Invitation not found');
+      throw new NotFoundException(apiError('invitation.notFound'));
     }
 
     if (invitation.acceptedAt || invitation.declinedAt) {
-      throw new BadRequestException('Invitation has already been responded to');
+      throw new BadRequestException(apiError('invitation.alreadyAnswered'));
     }
 
     // Verify the declining user's email matches the invitation
     if (invitation.email.toLowerCase() !== userEmail.toLowerCase()) {
-      throw new ForbiddenException(
-        'This invitation was sent to a different email address',
-      );
+      throw new ForbiddenException(apiError('invitation.wrongEmail'));
     }
 
     await invitation.update({ declinedAt: new Date() });
@@ -393,20 +389,23 @@ export class InvitationService {
     // so if we can't resolve the invitee's name we pass a generic
     // "A user" fallback rather than echoing the invitee's email.
     const inviterUser = await User.findByPk(invitation.inviterId, {
-      attributes: ['email', 'firstName', 'lastName'],
+      attributes: ['email', 'firstName', 'lastName', 'language'],
     });
     if (inviterUser?.email && invitation.group?.name) {
       const inviterDisplayName =
         [inviterUser.firstName, inviterUser.lastName]
           .filter(Boolean)
           .join(' ')
-          .trim() || 'there';
+          .trim() || null;
       this.emailService
         .sendGroupInvitationDeclinedEmail(
           inviterUser.email,
           inviterDisplayName,
-          inviteeName ?? 'A user',
+          // null, not a stand-in word: the email words a missing name
+          // itself, in the reader's language.
+          inviteeName ?? null,
           invitation.group.name,
+          toLocale(inviterUser.language),
         )
         .catch((err: Error) =>
           this.logger.error(
@@ -429,7 +428,7 @@ export class InvitationService {
     const invitation = await this.invitationModel.findByPk(invitationId);
 
     if (!invitation) {
-      throw new NotFoundException('Invitation not found');
+      throw new NotFoundException(apiError('invitation.notFound'));
     }
 
     // Verify the user is the group owner
@@ -437,7 +436,7 @@ export class InvitationService {
 
     if (invitation.acceptedAt) {
       throw new BadRequestException(
-        'Cannot cancel an already accepted invitation',
+        apiError('invitation.cannotCancelAccepted'),
       );
     }
 
@@ -466,7 +465,7 @@ export class InvitationService {
     });
 
     if (!invitation) {
-      throw new NotFoundException('Invitation not found');
+      throw new NotFoundException(apiError('invitation.notFound'));
     }
 
     // Verify the user is the group owner
@@ -474,7 +473,7 @@ export class InvitationService {
 
     if (invitation.acceptedAt) {
       throw new BadRequestException(
-        'Cannot resend an already accepted invitation',
+        apiError('invitation.cannotResendAccepted'),
       );
     }
 
@@ -495,11 +494,11 @@ export class InvitationService {
 
     // Get inviter name
     const inviter = await User.findByPk(invitation.inviterId, {
-      attributes: ['firstName', 'lastName'],
+      attributes: ['firstName', 'lastName', 'language'],
     });
     const inviterName = inviter
       ? `${inviter.firstName} ${inviter.lastName}`
-      : 'Group Owner';
+      : null;
 
     // Send email
     this.emailService
@@ -508,7 +507,8 @@ export class InvitationService {
         plainToken,
         inviterName,
         invitation.group.name,
-        invitation.message,
+        invitation.message ?? undefined,
+        await this.localeForEmail(invitation.email, inviter?.language),
       )
       .catch((err: Error) =>
         this.logger.error(
@@ -604,5 +604,21 @@ export class InvitationService {
       });
 
     return buildPaginatedResponse(data, totalItems, page, limit);
+  }
+
+  /**
+   * The language to write to an email address in. An invitation can go
+   * to someone with an account (use theirs) or without one (use the
+   * inviter's, the best guess for someone they know).
+   */
+  private async localeForEmail(
+    email: string,
+    inviterLanguage: string | undefined,
+  ): Promise<Locale> {
+    const recipient = await User.findOne({
+      where: { email: email.trim().toLowerCase() },
+      attributes: ['language'],
+    });
+    return toLocale(recipient?.language ?? inviterLanguage);
   }
 }

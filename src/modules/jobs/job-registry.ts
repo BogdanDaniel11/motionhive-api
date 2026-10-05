@@ -18,6 +18,8 @@
  * retention, separate workers on different dynos).
  */
 
+import type { Locale } from '../../common/i18n';
+
 /**
  * Queue names. Keep these short and lowercase — they show up in
  * Redis keys and the Bull Board UI. Add a new entry only when a job
@@ -57,16 +59,46 @@ export interface JobPayloads {
     receiptId: string;
     /** Recipient email address. */
     to: string;
-    /** Subject line. Same string we store on the notification row. */
+    /** Subject line, already rendered in the recipient's language. */
     title: string;
-    /** Email body text. Same string we store on the notification row. */
+    /** Email body text, already rendered in the recipient's language. */
     body: string;
+    /**
+     * The language `title` / `body` are in, so the layout around them
+     * (eyebrow, footer, legal links) matches. Optional only because a job
+     * enqueued by an older deploy will not have it.
+     */
+    locale?: Locale;
     /** Optional CTA URL pre-built by NotificationService.buildCtaUrl().
      *  We pre-build it on the producer side so the worker doesn't
      *  need access to ConfigService. */
     ctaUrl?: string;
     /** Button label shown next to the CTA URL. */
     ctaLabel?: string;
+  };
+
+  /**
+   * Push one notification to every device a user has.
+   *
+   * Unlike `email_send` this carries a `userId` rather than the
+   * addresses: a user has N devices, tokens are revoked and replaced
+   * between a notification being raised and this running, and sending
+   * to one we already know is dead wastes an attempt. The worker reads
+   * the live device list instead.
+   */
+  'notifications.push_send': {
+    /** Receipt id — also the BullMQ jobId, so a re-enqueue dedupes. */
+    receiptId: string;
+    /** Whose devices to deliver to. */
+    userId: string;
+    /** Notification title, rendered in the recipient's language. */
+    title: string;
+    /** Body text, rendered in the recipient's language. */
+    body: string;
+    /** Deep-link payload forwarded to the device for tap routing. */
+    data?: Record<string, string>;
+    /** Replaces an earlier alert about the same thing instead of stacking. */
+    collapseKey?: string;
   };
 
   // ── Sessions ────────────────────────────────────────────────────────
@@ -122,6 +154,9 @@ export interface JobPayloads {
   /** Re-process ORPHANED webhook rows whose local entity has since
    *  appeared; age out the truly stuck ones. */
   'payments.reconcile_webhooks': { runKey?: string };
+  /** A user changed language: point their Stripe customer at it, so
+   *  Stripe's own invoice emails and hosted pages follow. */
+  'payments.sync_customer_locale': { userId: string; locale: Locale };
 
   // ── Maintenance ─────────────────────────────────────────────────────
   // Bulk housekeeping sweeps; silent + idempotent.
@@ -150,6 +185,7 @@ export type JobPayload<K extends keyof JobPayloads> = JobPayloads[K];
  */
 export const ALL_JOB_NAMES: ReadonlyArray<keyof JobPayloads> = [
   'notifications.email_send',
+  'notifications.push_send',
   'sessions.reminder_dispatch',
   'sessions.status_transition',
   'sessions.generate_recurring',
@@ -166,6 +202,7 @@ export const ALL_JOB_NAMES: ReadonlyArray<keyof JobPayloads> = [
   'payments.balance_cache_refresh',
   'payments.process_webhook',
   'payments.reconcile_webhooks',
+  'payments.sync_customer_locale',
   'maintenance.cleanup_refresh_tokens',
   'maintenance.cleanup_lockouts',
   'maintenance.cleanup_invitations',

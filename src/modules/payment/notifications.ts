@@ -1,6 +1,6 @@
 import type { NotifyParams } from '../notification/notification.service';
 import { NotificationType } from '../notification/notification.service';
-import { formatDueDate, formatMoney } from '../notification/format';
+import { day, money, month } from '../../common/i18n';
 
 /**
  * Notification builders for the payment module. Co-located with the
@@ -13,9 +13,9 @@ import { formatDueDate, formatMoney } from '../notification/format';
  * are responsible for choosing `notify()` vs `outbox.add()` based on
  * whether they're inside a transaction.
  *
- * Add a new builder when a notification shape repeats (2+ call sites).
- * For one-off shapes, leave the object literal inline at the call
- * site — three lines isn't a helper.
+ * Copy lives in the catalog (`notifications.payment.*` under
+ * src/common/i18n/catalog). Builders pass raw values: amounts through
+ * `money()`, dates through `day()`, and `null` for anything missing.
  */
 
 // ---------------------------------------------------------------------------
@@ -30,18 +30,27 @@ interface InvoiceForBuilder {
   dueDate: Date | string | null;
 }
 
+/** A due date the message can branch on: `null` when there is none. */
+function dueParam(date: Date | string | null | undefined) {
+  if (!date) return null;
+  return Number.isNaN(new Date(date).getTime()) ? null : day(date);
+}
+
 /** Client received a freshly-finalized invoice. */
 export function invoiceCreatedForClient(
   clientId: string,
   invoice: InvoiceForBuilder,
 ): NotifyParams {
-  const amount = formatMoney(invoice.amountDueCents, invoice.currency);
-  const due = formatDueDate(invoice.dueDate);
   return {
     userId: clientId,
     type: NotificationType.INVOICE_CREATED,
-    title: 'New invoice',
-    body: due ? `${amount} due ${due}.` : `${amount} — open to view details.`,
+    message: {
+      key: 'payment.invoiceCreated',
+      params: {
+        amount: money(invoice.amountDueCents, invoice.currency),
+        due: dueParam(invoice.dueDate),
+      },
+    },
     data: { screen: 'profile/invoices', entityId: invoice.id },
   };
 }
@@ -51,12 +60,13 @@ export function invoicePaidForInstructor(
   instructorId: string,
   invoice: InvoiceForBuilder,
 ): NotifyParams {
-  const ref = invoice.number ?? invoice.id;
   return {
     userId: instructorId,
     type: NotificationType.INVOICE_PAID,
-    title: 'Invoice paid',
-    body: `Invoice ${ref} was paid by your client.`,
+    message: {
+      key: 'payment.invoicePaidForInstructor',
+      params: { ref: invoice.number ?? invoice.id },
+    },
     data: { screen: 'coaching/invoices', entityId: invoice.id },
   };
 }
@@ -69,8 +79,7 @@ export function invoicePaidForClient(
   return {
     userId: clientId,
     type: NotificationType.INVOICE_PAID,
-    title: 'Payment received',
-    body: 'Thanks — your payment has been processed.',
+    message: { key: 'payment.invoicePaidForClient' },
     data: { screen: 'profile/invoices', entityId: invoiceId },
   };
 }
@@ -80,12 +89,13 @@ export function invoiceMarkedPaidForInstructor(
   instructorId: string,
   invoice: InvoiceForBuilder,
 ): NotifyParams {
-  const ref = invoice.number ?? invoice.id;
   return {
     userId: instructorId,
     type: NotificationType.INVOICE_PAID,
-    title: 'Invoice marked paid',
-    body: `Invoice ${ref} marked as paid out of band.`,
+    message: {
+      key: 'payment.invoiceMarkedPaid',
+      params: { ref: invoice.number ?? invoice.id },
+    },
     data: { screen: 'coaching/invoices', entityId: invoice.id },
   };
 }
@@ -98,8 +108,7 @@ export function invoicePaymentFailedForClient(
   return {
     userId: clientId,
     type: NotificationType.PAYMENT_FAILED,
-    title: 'Payment failed',
-    body: 'Your invoice payment failed. Please update your card and retry.',
+    message: { key: 'payment.invoicePaymentFailed' },
     data: { screen: 'profile/invoices', entityId: invoiceId },
   };
 }
@@ -116,8 +125,10 @@ export function subscriptionCreatedForClient(
   return {
     userId: clientId,
     type: NotificationType.SUBSCRIPTION_CREATED,
-    title: 'New subscription',
-    body: `You have been subscribed to ${productName}.`,
+    message: {
+      key: 'payment.subscriptionCreated',
+      params: { product: productName },
+    },
     // Memberships live in a tab on /profile — no detail route, so we
     // forward queryParams instead of an entityId.
     data: { screen: 'profile', queryParams: { tab: 'memberships' } },
@@ -134,16 +145,15 @@ export function subscriptionCancelledForClient(
   productName: string | null,
   immediate: boolean,
 ): NotifyParams {
-  const subject = productName
-    ? `your "${productName}" membership`
-    : 'your membership';
   return {
     userId: clientId,
     type: NotificationType.SUBSCRIPTION_CANCELED,
-    title: immediate ? 'Membership cancelled' : 'Membership will cancel',
-    body: immediate
-      ? `${subject.charAt(0).toUpperCase() + subject.slice(1)} has been cancelled.`
-      : `${subject.charAt(0).toUpperCase() + subject.slice(1)} will end at the close of the current period.`,
+    message: {
+      key: immediate
+        ? 'payment.subscriptionCancelled'
+        : 'payment.subscriptionWillCancel',
+      params: { product: productName },
+    },
     data: { screen: 'profile', queryParams: { tab: 'memberships' } },
   };
 }
@@ -169,8 +179,10 @@ export function refundIssuedForClient(
   return {
     userId: clientId,
     type: NotificationType.REFUND_ISSUED,
-    title: 'Refund processed',
-    body: `A refund of ${formatMoney(refundCents, currency)} has been issued.`,
+    message: {
+      key: 'payment.refundIssued',
+      params: { amount: money(refundCents, currency) },
+    },
     data,
   };
 }
@@ -184,13 +196,16 @@ export function invoiceDueSoonForClient(
   clientId: string,
   invoice: InvoiceForBuilder,
 ): NotifyParams {
-  const amount = formatMoney(invoice.amountDueCents, invoice.currency);
-  const due = formatDueDate(invoice.dueDate);
   return {
     userId: clientId,
     type: NotificationType.INVOICE_DUE_SOON,
-    title: 'Invoice due soon',
-    body: due ? `${amount} is due ${due}.` : `${amount} is due soon.`,
+    message: {
+      key: 'payment.invoiceDueSoon',
+      params: {
+        amount: money(invoice.amountDueCents, invoice.currency),
+        due: dueParam(invoice.dueDate),
+      },
+    },
     data: { screen: 'profile/invoices', entityId: invoice.id },
     // Once per invoice, ever.
     fingerprint: `invoice_due_soon:${invoice.id}`,
@@ -204,12 +219,13 @@ export function invoiceOverdueForClient(
   invoice: InvoiceForBuilder,
   dayKey: string,
 ): NotifyParams {
-  const amount = formatMoney(invoice.amountDueCents, invoice.currency);
   return {
     userId: clientId,
     type: NotificationType.INVOICE_OVERDUE,
-    title: 'Invoice overdue',
-    body: `${amount} is past due. Please pay to avoid interruption.`,
+    message: {
+      key: 'payment.invoiceOverdueForClient',
+      params: { amount: money(invoice.amountDueCents, invoice.currency) },
+    },
     data: { screen: 'profile/invoices', entityId: invoice.id },
     fingerprint: `invoice_overdue:${invoice.id}:${dayKey}`,
   };
@@ -221,13 +237,16 @@ export function invoiceOverdueForInstructor(
   invoice: InvoiceForBuilder,
   dayKey: string,
 ): NotifyParams {
-  const ref = invoice.number ?? invoice.id;
-  const amount = formatMoney(invoice.amountDueCents, invoice.currency);
   return {
     userId: instructorId,
     type: NotificationType.INVOICE_OVERDUE,
-    title: 'Client invoice overdue',
-    body: `Invoice ${ref} (${amount}) is past due.`,
+    message: {
+      key: 'payment.invoiceOverdueForInstructor',
+      params: {
+        ref: invoice.number ?? invoice.id,
+        amount: money(invoice.amountDueCents, invoice.currency),
+      },
+    },
     data: { screen: 'coaching/invoices', entityId: invoice.id },
     fingerprint: `invoice_overdue_instr:${invoice.id}:${dayKey}`,
   };
@@ -243,13 +262,14 @@ export function cardExpiringForClient(
     expYear: number;
   },
 ): NotifyParams {
-  const tail = card.last4 ? ` ending ${card.last4}` : '';
   const mm = String(card.expMonth).padStart(2, '0');
   return {
     userId: clientId,
     type: NotificationType.CARD_EXPIRING_SOON,
-    title: 'Card expiring soon',
-    body: `Your card${tail} expires ${mm}/${card.expYear}. Update it to avoid a failed charge.`,
+    message: {
+      key: 'payment.cardExpiring',
+      params: { last4: card.last4, expiry: `${mm}/${card.expYear}` },
+    },
     data: { screen: 'profile', queryParams: { tab: 'memberships' } },
     fingerprint: `card_expiring:${clientId}:${card.expYear}${mm}`,
   };
@@ -259,19 +279,24 @@ export function cardExpiringForClient(
 export function earningsSummaryForInstructor(
   instructorId: string,
   summary: {
-    monthLabel: string; // e.g. "May 2026"
-    monthKey: string; // e.g. "2026-05" — fingerprint scope
+    month: string; // "2026-05" — the month being summarised
+    monthKey: string; // fingerprint scope, e.g. "2026-05:eur"
     grossCents: number;
     currency: string;
     paymentCount: number;
   },
 ): NotifyParams {
-  const gross = formatMoney(summary.grossCents, summary.currency);
   return {
     userId: instructorId,
     type: NotificationType.EARNINGS_SUMMARY,
-    title: `Your ${summary.monthLabel} earnings`,
-    body: `${gross} across ${summary.paymentCount} payment${summary.paymentCount === 1 ? '' : 's'} in ${summary.monthLabel}.`,
+    message: {
+      key: 'payment.earningsSummary',
+      params: {
+        month: month(summary.month),
+        amount: money(summary.grossCents, summary.currency),
+        count: summary.paymentCount,
+      },
+    },
     data: { screen: 'coaching/payments' },
     fingerprint: `earnings_summary:${instructorId}:${summary.monthKey}`,
   };
@@ -296,14 +321,18 @@ export function refundWindowClosingForInstructor(
     daysLeft: number;
   },
 ): NotifyParams {
-  const amount = formatMoney(payment.amountCents, payment.currency);
-  const days =
-    payment.daysLeft <= 1 ? 'tomorrow' : `in ${payment.daysLeft} days`;
   return {
     userId: instructorId,
     type: NotificationType.REFUND_WINDOW_CLOSING,
-    title: 'Refund window closing',
-    body: `The refund window for a ${amount} payment closes ${days}.`,
+    message: {
+      key: 'payment.refundWindowClosing',
+      params: {
+        amount: money(payment.amountCents, payment.currency),
+        // The message says "tomorrow" for one day, so anything sooner
+        // rounds up to it.
+        days: Math.max(1, payment.daysLeft),
+      },
+    },
     data: payment.invoiceId
       ? { screen: 'coaching/invoices', entityId: payment.invoiceId }
       : { screen: 'coaching/payments' },
@@ -323,8 +352,7 @@ export function invoiceDunningForClient(
   return {
     userId: clientId,
     type: NotificationType.PAYMENT_FAILED,
-    title: 'Action needed: payment failed',
-    body: 'Your invoice is still unpaid after a failed charge. Update your card and retry to keep your access.',
+    message: { key: 'payment.invoiceDunning' },
     data: { screen: 'profile/invoices', entityId: invoiceId },
     fingerprint: `dunning:${invoiceId}:${dayKey}`,
   };
@@ -345,16 +373,17 @@ export function disputeOpenedForInstructor(
     evidenceDueBy: Date | string | null;
   },
 ): NotifyParams {
-  const amount = formatMoney(dispute.amountCents, dispute.currency);
-  const due = formatDueDate(dispute.evidenceDueBy);
-  const reason = dispute.reason ? ` (${dispute.reason})` : '';
   return {
     userId: instructorId,
     type: NotificationType.DISPUTE_OPENED,
-    title: 'Payment disputed',
-    body: due
-      ? `A ${amount} payment was disputed${reason}. Respond with evidence by ${due}.`
-      : `A ${amount} payment was disputed${reason}. Respond in Stripe as soon as possible.`,
+    message: {
+      key: 'payment.disputeOpened',
+      params: {
+        amount: money(dispute.amountCents, dispute.currency),
+        reason: dispute.reason || null,
+        due: dueParam(dispute.evidenceDueBy),
+      },
+    },
     // No entityId: disputes are handled in Stripe (the body says so) and the
     // app has no dispute page, so `/coaching/payments/:id` was a 404. The
     // payments page is the closest surface the instructor can act from.
@@ -374,18 +403,65 @@ export function disputeEvidenceDueForInstructor(
     bucket: 't3' | 't1';
   },
 ): NotifyParams {
-  const due = formatDueDate(dispute.evidenceDueBy);
-  const when =
-    dispute.daysLeft <= 1 ? 'tomorrow' : `in ${dispute.daysLeft} days`;
   return {
     userId: instructorId,
     type: NotificationType.DISPUTE_EVIDENCE_DUE,
-    title: 'Dispute evidence due soon',
-    body: due
-      ? `Evidence for a disputed payment is due ${due} (${when}). Submit it in Stripe.`
-      : `Evidence for a disputed payment is due ${when}. Submit it in Stripe.`,
+    message: {
+      key: 'payment.disputeEvidenceDue',
+      params: {
+        due: dueParam(dispute.evidenceDueBy),
+        days: Math.max(1, dispute.daysLeft),
+      },
+    },
     data: { screen: 'coaching/payments' },
     fingerprint: `dispute_deadline:${dispute.id}:${dispute.bucket}`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Stripe Connect account
+// ---------------------------------------------------------------------------
+
+/** Instructor — Stripe finished verifying them; they can take payments. */
+export function stripeAccountReadyForInstructor(
+  instructorId: string,
+): NotifyParams {
+  return {
+    userId: instructorId,
+    type: NotificationType.STRIPE_ACCOUNT_READY,
+    message: { key: 'payment.stripeAccountReady' },
+    data: { screen: 'coaching/payments' },
+  };
+}
+
+/** Instructor — Stripe needs more information to keep payouts active. */
+export function stripeAccountRestrictedForInstructor(
+  instructorId: string,
+): NotifyParams {
+  return {
+    userId: instructorId,
+    type: NotificationType.STRIPE_ACCOUNT_RESTRICTED,
+    message: { key: 'payment.stripeAccountRestricted' },
+    data: { screen: 'coaching/payments' },
+  };
+}
+
+/**
+ * Instructor — their Stripe account was disconnected. `cancelledCount`
+ * is how many active subscriptions were set to end at period close.
+ */
+export function stripeAccountDisconnectedForInstructor(
+  instructorId: string,
+  cancelledCount: number,
+): NotifyParams {
+  return {
+    userId: instructorId,
+    type: NotificationType.STRIPE_ACCOUNT_RESTRICTED,
+    message: {
+      key: 'payment.stripeAccountDisconnected',
+      params: { count: cancelledCount },
+    },
+    data: { screen: 'coaching/payments' },
   };
 }
 
@@ -396,13 +472,13 @@ export function subscriptionCancelledByClientForInstructor(
   clientName: string | null,
   productName: string | null,
 ): NotifyParams {
-  const who = clientName ?? 'A client';
-  const what = productName ? ` to "${productName}"` : '';
   return {
     userId: instructorId,
     type: NotificationType.SUBSCRIPTION_CANCELED,
-    title: 'Membership cancelled by client',
-    body: `${who} cancelled their membership${what}; access ends at period close.`,
+    message: {
+      key: 'payment.subscriptionCancelledByClient',
+      params: { name: clientName, product: productName },
+    },
     data: { screen: 'coaching/subscriptions', entityId: subscriptionId },
   };
 }

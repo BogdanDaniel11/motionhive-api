@@ -9,6 +9,7 @@ import {
   CreatedAt,
   UpdatedAt,
 } from 'sequelize-typescript';
+import type { ContentTranslations } from '../../../common/i18n';
 import { Exercise } from '../../exercise/entities/exercise.entity';
 import { ExerciseBlock } from './exercise-block.entity';
 import { PrescribedSet } from './prescribed-set.entity';
@@ -65,6 +66,14 @@ export class PrescribedExercise extends Model {
   @ForeignKey(() => Exercise)
   @Column({ type: DataType.CHAR(36), allowNull: true })
   declare alternateExerciseId: string | null;
+
+  /**
+   * Other languages of notes, on MotionHive's own rows only
+   * (migration 063). Swapped in per reader by ContentLocaleInterceptor;
+   * never accepted from a request.
+   */
+  @Column({ type: DataType.JSONB, allowNull: true })
+  declare translations: ContentTranslations | null;
 
   @CreatedAt declare createdAt: Date;
   @UpdatedAt declare updatedAt: Date;

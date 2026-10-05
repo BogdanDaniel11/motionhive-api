@@ -12,7 +12,7 @@ export class LoginDto {
     example: 'user@example.com',
     description: 'User email address',
   })
-  @IsEmail()
+  @IsEmail({}, { message: 'errors.validation.invalidEmail' })
   @IsNotEmpty()
   email: string;
 

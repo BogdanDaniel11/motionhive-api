@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   Param,
+  ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -28,6 +29,7 @@ import { CreateProgramDto } from './dto/create-program.dto';
 import { CreateProgramWorkoutDto } from './dto/create-program-workout.dto';
 import { ListProgramsQueryDto } from './dto/list-programs.query.dto';
 import { CopyProgramWeekDto } from './dto/copy-program-week.dto';
+import { CopyProgramDayDto } from './dto/copy-program-day.dto';
 import { ReorderPrescribedRowsDto } from './dto/reorder-prescribed-rows.dto';
 import { ReorderProgramWorkoutsDto } from './dto/reorder-program-workouts.dto';
 import { UpdatePrescribedExerciseDto } from './dto/update-prescribed-exercise.dto';
@@ -35,6 +37,7 @@ import { UpdatePrescribedSetDto } from './dto/update-prescribed-set.dto';
 import { UpdateProgramDto } from './dto/update-program.dto';
 import { UpdateProgramWorkoutDto } from './dto/update-program-workout.dto';
 import { ProgramService } from './program.service';
+import { requestLocale } from '../../common/i18n';
 
 /**
  * Program authoring — INSTRUCTOR-only nested CRUD across the
@@ -105,7 +108,11 @@ export class ProgramController {
     @Request() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.programService.duplicateForUser(id, req.user.id);
+    return this.programService.duplicateForUser(
+      id,
+      req.user.id,
+      requestLocale(req),
+    );
   }
 
   @Patch(':id')
@@ -189,6 +196,40 @@ export class ProgramController {
     @Body() dto: CopyProgramWeekDto,
   ) {
     return this.programService.copyWeek(id, dto, req.user.id);
+  }
+
+  // Also before ':id/workouts/:workoutId' — a literal segment after
+  // `workouts/` must be declared ahead of the parameterised one.
+  @Post(':id/workouts/copy-day')
+  @Throttle({ default: { limit: 60, ttl: 3_600_000 } })
+  @ApiEndpoint({ ...ProgramDocs.copyDay, body: CopyProgramDayDto })
+  async copyDay(
+    @Request() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CopyProgramDayDto,
+  ) {
+    return this.programService.copyDay(id, dto, req.user.id);
+  }
+
+  @Post(':id/workouts/repeat-weeks')
+  @Throttle({ default: { limit: 30, ttl: 3_600_000 } })
+  @ApiEndpoint({ ...ProgramDocs.repeatWeeks })
+  async repeatWeeks(
+    @Request() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.programService.repeatWeeks(id, req.user.id);
+  }
+
+  @Delete(':id/weeks/:weekIndex')
+  @Throttle({ default: { limit: 60, ttl: 3_600_000 } })
+  @ApiEndpoint({ ...ProgramDocs.deleteWeek })
+  async deleteWeek(
+    @Request() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('weekIndex', ParseIntPipe) weekIndex: number,
+  ) {
+    return this.programService.deleteWeek(id, weekIndex, req.user.id);
   }
 
   @Patch(':id/workouts/:workoutId')

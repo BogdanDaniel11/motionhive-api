@@ -3,6 +3,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiTags } from '@nestjs/swagger';
 import { ApiEndpoint } from '../../../common/decorators/api-response.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
+import { RawContent } from '../../../common/decorators/raw-content.decorator';
 import { AdminDocs } from '../../../common/docs/admin.docs';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { AdminDbService } from '../services/admin-db.service';
@@ -10,6 +11,7 @@ import { ListDbRowsDto } from '../dto/list-db-rows.dto';
 
 /** Read-only DB browser — SUPER_ADMIN only. */
 @ApiTags('Admin — Database')
+@RawContent()
 @Controller('admin/db')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('SUPER_ADMIN')

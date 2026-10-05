@@ -1,3 +1,4 @@
+import type { Locale } from '../../i18n';
 import { escapeHtml } from '../../utils/html.utils';
 import {
   baseLayout,
@@ -11,6 +12,7 @@ import {
   securityNote,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
 
 /**
  * Friend-invite email. Sent when a MotionHive user shares the app
@@ -21,52 +23,61 @@ import {
  * so the future attribution flow can credit the inviter once the
  * BE picks up the field.
  */
-export function friendInviteTemplate(params: {
-  inviterName: string;
+export interface FriendInviteParams {
+  /** `null` when the inviter has no name on file; the copy words that case. */
+  inviterName: string | null;
   signUpLink: string;
   personalMessage?: string;
-}): string {
-  const { inviterName, signUpLink, personalMessage } = params;
-  const safeInviter = escapeHtml(inviterName);
-  const safeMessage = escapeHtml(personalMessage);
+  /** The recipient's language. */
+  locale: Locale;
+}
+
+export function friendInviteTemplate(params: FriendInviteParams): string {
+  const { inviterName, signUpLink, personalMessage, locale } = params;
+  const c = emailCopy(locale, 'email.social.friendInvite');
+  const inviter = inviterName || null;
 
   const content = `
-    ${eyebrow('INVITATION', 'action')}
-    ${heading('Come train with me on MotionHive')}
-    ${subheading(`${safeInviter} thinks you'd like it here`)}
-    ${personCard({ name: inviterName, role: 'Sent you an invite' })}
-    ${paragraph(`<strong>${safeInviter}</strong> uses MotionHive to find coaches, book sessions, and track workouts. They thought you might enjoy it too.`)}
-    ${personalMessage ? calloutBox('info', `<em>"${safeMessage}"</em>`) : ''}
-    ${primaryButton('Join MotionHive', signUpLink)}
-    ${securityNote("If you didn't expect this email, you can safely ignore it.")}
+    ${eyebrow(c.html('eyebrow'), 'action', locale)}
+    ${heading(c.html('heading'))}
+    ${subheading(c.html('subheading', { inviter }))}
+    ${personCard({
+      name: inviter ? escapeHtml(inviter) : c.html('anonymous'),
+      role: c.html('cardRole'),
+    })}
+    ${paragraph(c.html('body', { inviter }))}
+    ${personalMessage ? calloutBox('info', `<em>${c.html('message', { message: personalMessage })}</em>`) : ''}
+    ${primaryButton(c.html('cta'), signUpLink)}
+    ${securityNote(c.html('security'))}
   `;
 
   return baseLayout(content, {
-    preheader: `${inviterName} invited you to MotionHive`,
+    preheader: c.html('preheader', { inviter }),
     category: 'action',
+    locale,
   });
 }
 
-export function friendInviteTemplateText(params: {
-  inviterName: string;
-  signUpLink: string;
-  personalMessage?: string;
-}): string {
-  const { inviterName, signUpLink, personalMessage } = params;
+export function friendInviteTemplateText(params: FriendInviteParams): string {
+  const { inviterName, signUpLink, personalMessage, locale } = params;
+  const c = emailCopy(locale, 'email.social.friendInvite');
+  const inviter = inviterName || null;
+
   return plainTextLayout({
-    preheader: `${inviterName} invited you to MotionHive`,
+    preheader: c.text('preheader', { inviter }),
+    locale,
     sections: [
       {
-        heading: 'Come train with me on MotionHive',
+        heading: c.text('heading'),
         body: [
-          `${inviterName} uses MotionHive to find coaches, book sessions, and track workouts. They thought you might enjoy it too.`,
-          ...(personalMessage ? [`Message: "${personalMessage}"`] : []),
+          c.text('body', { inviter }),
+          ...(personalMessage
+            ? [c.text('messageText', { message: personalMessage })]
+            : []),
         ],
-        ctas: [{ label: 'Join MotionHive', url: signUpLink }],
+        ctas: [{ label: c.text('cta'), url: signUpLink }],
       },
-      {
-        body: ["If you didn't expect this email, you can safely ignore it."],
-      },
+      { body: [c.text('security')] },
     ],
   });
 }

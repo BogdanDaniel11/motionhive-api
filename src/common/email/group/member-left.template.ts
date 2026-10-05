@@ -1,3 +1,4 @@
+import type { Locale } from '../../i18n';
 import { escapeHtml } from '../../utils/html.utils';
 import {
   baseLayout,
@@ -9,6 +10,16 @@ import {
   secondaryButton,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
+
+export interface GroupMemberLeftParams {
+  ownerFirstName: string | null;
+  /** `null` when the member's name could not be resolved. */
+  memberName: string | null;
+  groupName: string;
+  groupLink: string;
+  locale: Locale;
+}
 
 /**
  * Sent to a group owner when one of their members leaves the group
@@ -16,52 +27,51 @@ import {
  * every departure is a loss, and we don't want to make the owner
  * feel bad about routine churn.
  */
-export function groupMemberLeftTemplate(params: {
-  ownerFirstName: string | null;
-  memberName: string;
-  groupName: string;
-  groupLink: string;
-}): string {
-  const { ownerFirstName, memberName, groupName, groupLink } = params;
-  const safeFirst = escapeHtml(ownerFirstName);
-  const safeMember = escapeHtml(memberName);
-  const safeGroup = escapeHtml(groupName);
-  const greeting = ownerFirstName ? `Hi ${safeFirst},` : 'Hi there,';
+export function groupMemberLeftTemplate(params: GroupMemberLeftParams): string {
+  const { ownerFirstName, memberName, groupName, groupLink, locale } = params;
+  const c = emailCopy(locale, 'email.group.memberLeft');
+  const name = memberName || null;
+  const memberCard = name
+    ? personCard({
+        name: escapeHtml(name),
+        role: c.html('cardRole', { group: groupName }),
+      })
+    : '';
 
   const content = `
-    ${eyebrow('UPDATE', 'update')}
-    ${paragraph(greeting)}
-    ${heading('A member left your group')}
-    ${subheading(`${safeMember} is no longer in ${safeGroup}`)}
-    ${personCard({ name: memberName, role: `Was a member of ${groupName}` })}
-    ${paragraph(`<strong>${safeMember}</strong> left <strong>${safeGroup}</strong>. Their data and posts remain visible to current members; only their access has been revoked.`)}
-    ${secondaryButton('Open group', groupLink)}
+    ${eyebrow('', 'update', locale)}
+    ${paragraph(c.html('greeting', { firstName: ownerFirstName || null }))}
+    ${heading(c.html('heading'))}
+    ${subheading(c.html('subheading', { name, group: groupName }))}
+    ${memberCard}
+    ${paragraph(c.html('body', { name, group: groupName }))}
+    ${secondaryButton(c.html('cta'), groupLink)}
   `;
 
   return baseLayout(content, {
-    preheader: `${memberName} left ${groupName}`,
+    preheader: c.html('preheader', { name, group: groupName }),
     category: 'update',
+    locale,
   });
 }
 
-export function groupMemberLeftTemplateText(params: {
-  ownerFirstName: string | null;
-  memberName: string;
-  groupName: string;
-  groupLink: string;
-}): string {
-  const { ownerFirstName, memberName, groupName, groupLink } = params;
-  const greeting = ownerFirstName ? `Hi ${ownerFirstName},` : 'Hi there,';
+export function groupMemberLeftTemplateText(
+  params: GroupMemberLeftParams,
+): string {
+  const { ownerFirstName, memberName, groupName, groupLink, locale } = params;
+  const c = emailCopy(locale, 'email.group.memberLeft');
+  const name = memberName || null;
   return plainTextLayout({
-    preheader: `${memberName} left ${groupName}`,
+    preheader: c.text('preheader', { name, group: groupName }),
+    locale,
     sections: [
       {
-        heading: 'A member left your group',
+        heading: c.text('heading'),
         body: [
-          greeting,
-          `${memberName} left ${groupName}. Their data and posts remain visible to current members; only their access has been revoked.`,
+          c.text('greeting', { firstName: ownerFirstName || null }),
+          c.text('body', { name, group: groupName }),
         ],
-        ctas: [{ label: 'Open group', url: groupLink }],
+        ctas: [{ label: c.text('cta'), url: groupLink }],
       },
     ],
   });

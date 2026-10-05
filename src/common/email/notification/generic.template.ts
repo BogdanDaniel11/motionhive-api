@@ -1,3 +1,4 @@
+import type { Locale } from '../../i18n';
 import { escapeHtml } from '../../utils/html.utils';
 import {
   baseLayout,
@@ -23,6 +24,7 @@ import {
 export function genericNotificationTemplate(params: {
   title: string;
   body: string;
+  locale: Locale;
   ctaUrl?: string;
   ctaLabel?: string;
 }): string {
@@ -34,7 +36,7 @@ export function genericNotificationTemplate(params: {
       : '';
 
   const content = `
-    ${eyebrow('UPDATE', 'update')}
+    ${eyebrow('', 'update', params.locale)}
     ${heading(safeTitle)}
     ${paragraph(safeBody)}
     ${cta}
@@ -43,17 +45,20 @@ export function genericNotificationTemplate(params: {
   return baseLayout(content, {
     preheader: safeTitle,
     category: 'update',
+    locale: params.locale,
   });
 }
 
 export function genericNotificationTemplateText(params: {
   title: string;
   body: string;
+  locale: Locale;
   ctaUrl?: string;
   ctaLabel?: string;
 }): string {
   return plainTextLayout({
     preheader: params.title,
+    locale: params.locale,
     sections: [
       {
         heading: params.title,

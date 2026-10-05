@@ -7,6 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { RoleService } from '../../modules/role/role.service';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
+import { apiError } from '../i18n';
 
 /**
  * PermissionsGuard
@@ -39,7 +40,7 @@ export class PermissionsGuard implements CanActivate {
     const user = request.user;
 
     if (!user) {
-      throw new ForbiddenException('User not authenticated');
+      throw new ForbiddenException(apiError('common.unauthorized'));
     }
 
     const hasAllPermissions = await this.roleService.userHasAllPermissions(
@@ -48,9 +49,7 @@ export class PermissionsGuard implements CanActivate {
     );
 
     if (!hasAllPermissions) {
-      throw new ForbiddenException(
-        `Access denied. Required permissions: ${requiredPermissions.join(', ')}`,
-      );
+      throw new ForbiddenException(apiError('common.forbidden'));
     }
 
     return true;

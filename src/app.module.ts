@@ -39,6 +39,7 @@ import { ProgressModule } from './modules/progress/progress.module';
 import { ReviewModule } from './modules/review/review.module';
 import { MessagingModule } from './modules/messaging/messaging.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { ContentLocaleInterceptor } from './common/interceptors/content-locale.interceptor';
 import { CamelCaseInterceptor } from './common/interceptors/camel-case.interceptor';
 
 @Module({
@@ -127,6 +128,9 @@ import { CamelCaseInterceptor } from './common/interceptors/camel-case.intercept
 
   providers: [
     { provide: APP_GUARD, useClass: UserThrottlerGuard },
+    // Order matters: the first registered runs last on the way out, so
+    // content is localised after CamelCase has turned it into plain JSON.
+    { provide: APP_INTERCEPTOR, useClass: ContentLocaleInterceptor },
     { provide: APP_INTERCEPTOR, useClass: CamelCaseInterceptor },
   ],
 })

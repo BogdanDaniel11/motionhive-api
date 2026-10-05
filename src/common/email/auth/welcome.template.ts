@@ -1,4 +1,4 @@
-import { escapeHtml } from '../../utils/html.utils';
+import type { Locale } from '../../i18n';
 import {
   baseLayout,
   divider,
@@ -10,6 +10,7 @@ import {
   secondaryButton,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
 
 /**
  * Fired after the user verifies their email — NOT on sign-up. Drops
@@ -21,52 +22,55 @@ import {
 export function welcomeTemplate(
   firstName: string,
   frontendUrl: string,
+  locale: Locale,
 ): string {
-  const safeFirstName = escapeHtml(firstName);
+  const c = emailCopy(locale, 'email.auth.welcome');
   const content = `
-    ${eyebrow('WELCOME', 'confirmation')}
-    ${heading(`Welcome, ${safeFirstName}! &#9889;`)}
-    ${subheading("You're all set to start your journey towards a healthier and more active lifestyle")}
-    ${paragraph("Your MotionHive account is ready. Here's what you can do:")}
+    ${eyebrow(c.html('eyebrow'), 'confirmation')}
+    ${heading(`${c.html('heading', { name: firstName })} &#9889;`)}
+    ${subheading(c.html('subheading'))}
+    ${paragraph(c.html('intro'))}
 
     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
-      ${featureItem('&#127947;', '<strong>Join sessions</strong> — Find and participate in sessions that match your goals and preferences')}
-      ${featureItem('&#129309;', '<strong>Connect with professionals</strong> — Get personalized guidance')}
-      ${featureItem('&#127942;', '<strong>Organize your own events and sessions</strong> — Create sessions and build your community')}
+      ${featureItem('&#127947;', c.html('featureSessions'))}
+      ${featureItem('&#129309;', c.html('featureCoaches'))}
+      ${featureItem('&#127942;', c.html('featureOrganize'))}
     </table>
 
-    ${secondaryButton('Open MotionHive', frontendUrl)}
+    ${secondaryButton(c.html('cta'), frontendUrl)}
     ${divider()}
-    ${paragraph("Need help? Just reply to this email — we're happy to assist.")}
+    ${paragraph(c.html('help'))}
   `;
 
   return baseLayout(content, {
-    preheader: `Welcome to MotionHive, ${safeFirstName}!`,
+    preheader: c.html('preheader', { name: firstName }),
     category: 'confirmation',
+    locale,
   });
 }
 
 export function welcomeTemplateText(
   firstName: string,
   frontendUrl: string,
+  locale: Locale,
 ): string {
+  const c = emailCopy(locale, 'email.auth.welcome');
   return plainTextLayout({
-    preheader: `Welcome to MotionHive, ${firstName}!`,
+    preheader: c.text('preheader', { name: firstName }),
+    locale,
     sections: [
       {
-        heading: `Welcome, ${firstName}!`,
+        heading: c.text('heading', { name: firstName }),
         body: [
-          "You're all set to start your journey towards a healthier and more active lifestyle.",
-          "Your MotionHive account is ready. Here's what you can do:",
-          '- Join sessions — Find and participate in sessions that match your goals and preferences',
-          '- Connect with professionals — Get personalized guidance',
-          '- Organize your own events and sessions — Create sessions and build your community',
+          c.text('subheading'),
+          c.text('intro'),
+          `- ${c.text('featureSessions')}`,
+          `- ${c.text('featureCoaches')}`,
+          `- ${c.text('featureOrganize')}`,
         ],
-        ctas: [{ label: 'Open MotionHive', url: frontendUrl }],
+        ctas: [{ label: c.text('cta'), url: frontendUrl }],
       },
-      {
-        body: ["Need help? Just reply to this email — we're happy to assist."],
-      },
+      { body: [c.text('help')] },
     ],
   });
 }

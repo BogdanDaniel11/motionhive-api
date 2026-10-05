@@ -7,7 +7,7 @@ import { PaymentModule } from '../payment/payment.module';
 import { MaintenanceModule } from '../maintenance/maintenance.module';
 import { JobsService } from './jobs.service';
 import { QUEUE_DEFAULTS, QueueName } from './job-registry';
-import { EmailSendWorker } from './workers/notifications/email-send.worker';
+import { NotificationsWorker } from './workers/notifications/notifications.worker';
 import { SessionsWorker } from './workers/sessions/sessions.worker';
 import { WorkoutsWorker } from './workers/workouts/workouts.worker';
 import { PaymentsWorker } from './workers/payments/payments.worker';
@@ -67,7 +67,7 @@ export class JobsModule {
 
     const workerProviders: Provider[] = redisEnabled
       ? [
-          EmailSendWorker,
+          NotificationsWorker,
           SessionsWorker,
           WorkoutsWorker,
           PaymentsWorker,
@@ -116,9 +116,9 @@ export class JobsModule {
           defaultJobOptions:
             QUEUE_DEFAULTS[QueueName.Maintenance].defaultJobOptions,
         }),
-        // NotificationModule for the receipt service used by EmailSendWorker.
-        // Session/Workout/Payment modules export the services the workers
-        // delegate to. One-way imports — JobsModule is @Global, so none
+        // NotificationModule for the receipt + push delivery services
+        // NotificationsWorker uses. Session/Workout/Payment modules export
+        // the services their workers delegate to. One-way imports — JobsModule is @Global, so none
         // import it back (no cycle).
         NotificationModule,
         SessionModule,

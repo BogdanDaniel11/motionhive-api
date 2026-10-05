@@ -13,6 +13,7 @@ import { Post, PostApprovalState } from './entities/post.entity';
 import { PostComment } from './entities/post-comment.entity';
 import { PostReaction } from './entities/post-reaction.entity';
 import { CloudinaryService } from '../../common/services/cloudinary.service';
+import { apiError } from '../../common/i18n';
 import { Group, MemberPostPolicy } from '../group/entities/group.entity';
 import {
   GroupMember,
@@ -64,6 +65,13 @@ export interface FeedItem {
     firstName: string;
     lastName: string;
     avatarUrl: string | null;
+    /**
+     * How the FE addresses a profile (`/@<handle>`). Nullable because an
+     * account can exist without one; a name with no handle simply is not a
+     * link. Comments already carried this — posts projected it away, so the
+     * same author was tappable under a comment and inert above it.
+     */
+    handle: string | null;
   } | null;
   /**
    * Optional. Populated by the cross-group feed (`getMyFeed`) so the FE
@@ -121,7 +129,7 @@ export class PostService {
   ): Promise<{ posts: FeedItem[] }> {
     const uniqueGroupIds = Array.from(new Set(dto.groupIds));
     if (uniqueGroupIds.length !== dto.groupIds.length) {
-      throw new BadRequestException('Duplicate groupIds in request');
+      throw new BadRequestException(apiError('post.duplicateGroups'));
     }
 
     if (dto.mediaUrls?.length) {
@@ -179,7 +187,7 @@ export class PostService {
       where: { id: { [Op.in]: groupIds } },
     });
     if (groups.length !== groupIds.length) {
-      throw new NotFoundException('One or more groups were not found');
+      throw new NotFoundException(apiError('post.groupsNotFound'));
     }
 
     const memberships = await this.memberModel.findAll({
@@ -196,7 +204,7 @@ export class PostService {
       const membership = membershipByGroup.get(group.id);
       if (!membership) {
         throw new ForbiddenException(
-          `You are not an active member of group ${group.id}`,
+          apiError('post.cannotPostNotMember', { group: group.name }),
         );
       }
 
@@ -211,7 +219,7 @@ export class PostService {
 
       if (group.memberPostPolicy === MemberPostPolicy.DISABLED) {
         throw new ForbiddenException(
-          `Members are not allowed to post in group ${group.id}`,
+          apiError('post.membersCannotPost', { group: group.name }),
         );
       }
 
@@ -432,7 +440,7 @@ export class PostService {
         },
       ],
     });
-    if (!post) throw new NotFoundException('Post not found');
+    if (!post) throw new NotFoundException(apiError('post.notFound'));
 
     const [items] = await this.hydrateFeedItems([post], userId, {
       includeGroup: true,
@@ -508,12 +516,12 @@ export class PostService {
     dto: UpdatePostDto,
   ): Promise<FeedItem> {
     const post = await this.postModel.findByPk(postId);
-    if (!post) throw new NotFoundException('Post not found');
+    if (!post) throw new NotFoundException(apiError('post.notFound'));
     if (post.authorId !== userId) {
-      throw new ForbiddenException('Only the author can edit this post');
+      throw new ForbiddenException(apiError('post.onlyAuthorCanEdit'));
     }
     if (dto.content === undefined && dto.mediaUrls === undefined) {
-      throw new BadRequestException('Nothing to update');
+      throw new BadRequestException(apiError('post.nothingToUpdate'));
     }
 
     if (dto.mediaUrls?.length) {
@@ -553,12 +561,12 @@ export class PostService {
     dto: ModeratePostDto,
   ): Promise<void> {
     const post = await this.postModel.findByPk(postId);
-    if (!post) throw new NotFoundException('Post not found');
+    if (!post) throw new NotFoundException(apiError('post.notFound'));
     await this.assertGroupStaff(userId, post.groupId);
 
     if (post.approvalState !== PostApprovalState.PENDING) {
       throw new BadRequestException(
-        `This post is already ${post.approvalState.toLowerCase()}`,
+        apiError('post.alreadyReviewed', { state: post.approvalState }),
       );
     }
 
@@ -614,7 +622,7 @@ export class PostService {
       where: { id: postId },
       paranoid: false,
     });
-    if (!post) throw new NotFoundException('Post not found');
+    if (!post) throw new NotFoundException(apiError('post.notFound'));
 
     // Idempotent on retries.
     if (post.deletedAt !== null) {
@@ -655,12 +663,10 @@ export class PostService {
     if (dto.parentCommentId) {
       const parent = await this.commentModel.findByPk(dto.parentCommentId);
       if (!parent || parent.postId !== postId) {
-        throw new BadRequestException('Parent comment not found on this post');
+        throw new BadRequestException(apiError('post.replyTargetNotFound'));
       }
       if (parent.parentCommentId !== null) {
-        throw new BadRequestException(
-          'Replies can only be added to top-level comments',
-        );
+        throw new BadRequestException(apiError('post.cannotReplyToReply'));
       }
     }
 
@@ -709,12 +715,12 @@ export class PostService {
 
   async deleteComment(userId: string, commentId: string): Promise<void> {
     const comment = await this.commentModel.findByPk(commentId);
-    if (!comment) throw new NotFoundException('Comment not found');
+    if (!comment) throw new NotFoundException(apiError('post.commentNotFound'));
 
     if (comment.authorId !== userId) {
       // Non-author: must be staff of the post's group.
       const post = await this.postModel.findByPk(comment.postId);
-      if (!post) throw new NotFoundException('Post not found');
+      if (!post) throw new NotFoundException(apiError('post.notFound'));
       await this.assertGroupStaff(userId, post.groupId);
     }
 
@@ -861,7 +867,7 @@ export class PostService {
       where: { userId, groupId, leftAt: null },
     });
     if (!m) {
-      throw new ForbiddenException('You are not a member of this group');
+      throw new ForbiddenException(apiError('post.notGroupMember'));
     }
     return m;
   }
@@ -875,7 +881,7 @@ export class PostService {
       m.role !== GroupMemberRole.OWNER &&
       m.role !== GroupMemberRole.MODERATOR
     ) {
-      throw new ForbiddenException('Owner or moderator role required');
+      throw new ForbiddenException(apiError('post.staffOnly'));
     }
     return m;
   }
@@ -891,9 +897,9 @@ export class PostService {
     postId: string,
   ): Promise<Post> {
     const post = await this.postModel.findByPk(postId);
-    if (!post) throw new NotFoundException('Post not found');
+    if (!post) throw new NotFoundException(apiError('post.notFound'));
     if (post.approvalState !== PostApprovalState.APPROVED) {
-      throw new ForbiddenException('Post is not visible to you');
+      throw new ForbiddenException(apiError('post.notVisible'));
     }
     await this.assertActiveMember(userId, post.groupId);
     return post;
@@ -964,6 +970,7 @@ export class PostService {
             firstName: post.author.firstName,
             lastName: post.author.lastName,
             avatarUrl: post.author.avatarUrl,
+            handle: post.author.handle,
           }
         : null,
       group:
@@ -990,7 +997,7 @@ export class PostService {
         },
       ],
     });
-    if (!post) throw new NotFoundException('Post not found');
+    if (!post) throw new NotFoundException(apiError('post.notFound'));
 
     const [reactionCount, commentCount, myReaction] = await Promise.all([
       this.reactionModel.count({ where: { postId } }),
@@ -1017,6 +1024,7 @@ export class PostService {
             firstName: post.author.firstName,
             lastName: post.author.lastName,
             avatarUrl: post.author.avatarUrl,
+            handle: post.author.handle,
           }
         : null,
     };

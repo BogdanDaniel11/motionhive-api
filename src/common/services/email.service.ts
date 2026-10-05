@@ -25,15 +25,14 @@ import {
   invitationAcceptedTemplate,
   invitationTemplate,
   invoiceSendTemplate,
-  participantStatusTemplate,
   passwordChangedTemplate,
   passwordResetTemplate,
-  sessionCancelledTemplate,
-  sessionRescheduledTemplate,
   subscriptionSetupTemplate,
   waitlistConfirmationTemplate,
   welcomeTemplate,
 } from '../email';
+import { translate } from '../i18n';
+import type { Locale } from '../i18n';
 
 /**
  * Email Service
@@ -104,6 +103,7 @@ export class EmailService {
   async sendEmailVerification(
     email: string,
     verificationToken: string,
+    locale: Locale,
   ): Promise<void> {
     // In dev: link goes to API GET endpoint directly (returns inline
     // success/failure HTML — no FE needed for solo backend testing).
@@ -114,8 +114,8 @@ export class EmailService {
       ? `${this.frontendUrl}/auth/verify-email?token=${verificationToken}`
       : `${this.apiUrl}/auth/verify-email?token=${verificationToken}`;
 
-    const subject = 'Verify your MotionHive email';
-    const html = emailVerificationTemplate(verifyLink);
+    const subject = translate(locale, 'email.auth.verification.subject');
+    const html = emailVerificationTemplate(verifyLink, locale);
 
     await this.send(email, subject, html);
   }
@@ -123,9 +123,13 @@ export class EmailService {
   /**
    * Send welcome email (called after email verification, not on registration)
    */
-  async sendWelcomeEmail(email: string, firstName: string): Promise<void> {
-    const subject = 'Welcome to MotionHive!';
-    const html = welcomeTemplate(firstName, this.frontendUrl);
+  async sendWelcomeEmail(
+    email: string,
+    firstName: string,
+    locale: Locale,
+  ): Promise<void> {
+    const subject = translate(locale, 'email.auth.welcome.subject');
+    const html = welcomeTemplate(firstName, this.frontendUrl, locale);
 
     await this.send(email, subject, html);
   }
@@ -136,14 +140,15 @@ export class EmailService {
   async sendPasswordResetEmail(
     email: string,
     resetToken: string,
+    locale: Locale,
   ): Promise<void> {
     // Frontend flow:
     // - /auth/reset-password -> requests a reset email
     // - /auth/new-password?token=... -> sets the new password
     const resetLink = `${this.frontendUrl}/auth/new-password?token=${resetToken}`;
 
-    const subject = 'Reset your MotionHive password';
-    const html = passwordResetTemplate(resetLink);
+    const subject = translate(locale, 'email.auth.passwordReset.subject');
+    const html = passwordResetTemplate(resetLink, locale);
 
     await this.send(email, subject, html);
   }
@@ -158,19 +163,23 @@ export class EmailService {
   async sendInvitationEmail(
     email: string,
     invitationToken: string,
-    inviterName: string,
+    inviterName: string | null,
     groupName: string,
-    message?: string,
+    message: string | undefined,
+    locale: Locale,
   ): Promise<void> {
     // Token lives on the path, not the query — FE route is `/join/:token`.
     const acceptLink = `${this.frontendUrl}/join/${invitationToken}`;
 
-    const subject = `You're invited to join ${groupName} on MotionHive`;
+    const subject = translate(locale, 'email.group.invitation.subject', {
+      group: groupName,
+    });
     const html = invitationTemplate(
       inviterName,
       groupName,
       acceptLink,
       message,
+      locale,
     );
 
     await this.send(email, subject, html);
@@ -192,16 +201,20 @@ export class EmailService {
    */
   async sendFriendInviteEmail(
     email: string,
-    inviterName: string,
+    inviterName: string | null,
     inviterUserId: string,
-    personalMessage?: string,
+    personalMessage: string | undefined,
+    locale: Locale,
   ): Promise<void> {
     const signUpLink = `${this.frontendUrl}/auth/signup?ref=${encodeURIComponent(inviterUserId)}`;
-    const subject = `${inviterName} invited you to MotionHive`;
+    const subject = translate(locale, 'email.social.friendInvite.subject', {
+      inviter: inviterName || null,
+    });
     const html = friendInviteTemplate({
       inviterName,
       signUpLink,
       personalMessage,
+      locale,
     });
     await this.send(email, subject, html);
   }
@@ -214,16 +227,22 @@ export class EmailService {
   async sendInstructorSuggestionEmail(
     email: string,
     coachName: string,
-    recommenderName: string,
-    note?: string,
+    recommenderName: string | null,
+    note: string | undefined,
+    locale: Locale,
   ): Promise<void> {
     const signUpLink = `${this.frontendUrl}/auth/signup?role=instructor`;
-    const subject = `${recommenderName} suggested you join MotionHive`;
+    const subject = translate(
+      locale,
+      'email.social.instructorSuggestion.subject',
+      { recommender: recommenderName || null },
+    );
     const html = instructorSuggestionTemplate({
       coachName,
       recommenderName,
       signUpLink,
       note,
+      locale,
     });
     await this.send(email, subject, html);
   }
@@ -231,18 +250,24 @@ export class EmailService {
   async sendClientInvitationEmail(
     email: string,
     instructorName: string,
-    message?: string,
-    token?: string,
+    message: string | undefined,
+    token: string | undefined,
+    locale: Locale,
   ): Promise<void> {
     const signUpLink = token
       ? `${this.frontendUrl}/auth/signup?token=${token}`
       : `${this.frontendUrl}/auth/signup?ref=client-invite`;
 
-    const subject = `${instructorName} invited you to MotionHive`;
+    const subject = translate(
+      locale,
+      'email.client.invitationNewUser.subject',
+      { name: instructorName },
+    );
     const html = clientInvitationNewUserTemplate({
       instructorName,
       signUpLink,
       message,
+      locale,
     });
 
     await this.send(email, subject, html);
@@ -257,17 +282,23 @@ export class EmailService {
     instructorFirstName: string | null,
     clientName: string,
     requestId: string,
-    message?: string,
+    message: string | undefined,
+    locale: Locale,
   ): Promise<void> {
     // Land on the pending-requests page (not the active clients list) and
     // highlight the specific row via the ?requestId param.
     const reviewLink = `${this.frontendUrl}/coaching/pending-requests?requestId=${encodeURIComponent(requestId)}`;
-    const subject = `${clientName} wants to work with you on MotionHive`;
+    const subject = translate(
+      locale,
+      'email.client.requestToInstructor.subject',
+      { name: clientName },
+    );
     const html = clientRequestToInstructorTemplate({
       instructorFirstName,
       clientName,
       reviewLink,
       message,
+      locale,
     });
     await this.send(email, subject, html);
   }
@@ -281,13 +312,27 @@ export class EmailService {
     email: string,
     recipientFirstName: string | null,
     responderName: string,
+    /** Who sent the request: a client, or a coach who sent an invitation. */
+    recipientRole: 'client' | 'instructor',
+    locale: Locale,
   ): Promise<void> {
-    const appLink = `${this.frontendUrl}/profile?tab=coaches`;
-    const subject = `${responderName} accepted your request on MotionHive`;
+    // Each side lands where the new relationship shows: a coach on their
+    // clients list, a client on their coaches tab.
+    const appLink =
+      recipientRole === 'instructor'
+        ? `${this.frontendUrl}/coaching/clients`
+        : `${this.frontendUrl}/profile?tab=coaches`;
+    const subject = translate(
+      locale,
+      `email.client.requestAccepted.${recipientRole}.subject`,
+      { name: responderName },
+    );
     const html = clientRequestAcceptedTemplate({
       recipientFirstName,
       responderName,
+      recipientRole,
       appLink,
+      locale,
     });
     await this.send(email, subject, html);
   }
@@ -300,11 +345,19 @@ export class EmailService {
     email: string,
     recipientFirstName: string | null,
     responderName: string,
+    /** Who sent the request: a client, or a coach who sent an invitation. */
+    recipientRole: 'client' | 'instructor',
+    locale: Locale,
   ): Promise<void> {
-    const subject = `Update on your request on MotionHive`;
+    const subject = translate(
+      locale,
+      `email.client.requestDeclined.${recipientRole}.subject`,
+    );
     const html = clientRequestDeclinedTemplate({
       recipientFirstName,
       responderName,
+      recipientRole,
+      locale,
     });
     await this.send(email, subject, html);
   }
@@ -319,50 +372,22 @@ export class EmailService {
     recipientFirstName: string | null,
     instructorName: string,
     requestId: string,
-    message?: string,
+    message: string | undefined,
+    locale: Locale,
   ): Promise<void> {
     const acceptLink = `${this.frontendUrl}/profile?tab=coaches&requestId=${encodeURIComponent(requestId)}`;
-    const subject = `${instructorName} wants to add you as a client on MotionHive`;
+    const subject = translate(
+      locale,
+      'email.client.invitationExistingUser.subject',
+      { name: instructorName },
+    );
     const html = clientInvitationExistingUserTemplate({
       recipientFirstName,
       instructorName,
       acceptLink,
       message,
+      locale,
     });
-
-    await this.send(email, subject, html);
-  }
-
-  // =====================================================
-  // SESSION NOTIFICATION EMAILS
-  // =====================================================
-
-  /**
-   * Send session cancellation notification to a participant
-   */
-  async sendSessionCancelledEmail(
-    email: string,
-    participantName: string,
-    sessionTitle: string,
-    instructorName: string,
-    scheduledAt: Date,
-  ): Promise<void> {
-    const formattedDate = scheduledAt.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-    const subject = `Session "${sessionTitle}" has been cancelled`;
-    const html = sessionCancelledTemplate(
-      participantName,
-      sessionTitle,
-      instructorName,
-      formattedDate,
-    );
 
     await this.send(email, subject, html);
   }
@@ -376,46 +401,25 @@ export class EmailService {
    */
   async sendInvitationAcceptedEmail(
     email: string,
-    inviterName: string,
-    accepterName: string,
-    groupName: string,
+    inviterName: string | null,
+    accepterName: string | null,
+    groupName: string | null,
+    locale: Locale,
   ): Promise<void> {
-    const subject = `${accepterName} accepted your invitation to ${groupName}`;
+    const subject = translate(
+      locale,
+      'email.group.invitationAccepted.subject',
+      {
+        name: accepterName || null,
+        group: groupName || null,
+      },
+    );
     const html = invitationAcceptedTemplate(
       inviterName,
       accepterName,
       groupName,
       this.frontendUrl,
-    );
-
-    await this.send(email, subject, html);
-  }
-
-  /**
-   * Notify participant of a status change on their session registration
-   */
-  async sendParticipantStatusEmail(
-    email: string,
-    participantName: string,
-    sessionTitle: string,
-    newStatus: string,
-    scheduledAt: Date,
-  ): Promise<void> {
-    const formattedDate = scheduledAt.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-    const subject = `Session "${sessionTitle}" — status updated`;
-    const html = participantStatusTemplate(
-      participantName,
-      sessionTitle,
-      newStatus,
-      formattedDate,
+      locale,
     );
 
     await this.send(email, subject, html);
@@ -428,9 +432,14 @@ export class EmailService {
   /**
    * Send waitlist confirmation email
    */
-  async sendWaitlistConfirmation(email: string, name?: string): Promise<void> {
-    const subject = "You're on the MotionHive waitlist!";
-    const html = waitlistConfirmationTemplate(name);
+  async sendWaitlistConfirmation(
+    email: string,
+    name: string | undefined,
+    locale: Locale,
+  ): Promise<void> {
+    const subject = translate(locale, 'email.waitlist.confirmation.subject');
+    const signUpLink = `${this.frontendUrl}/auth/signup`;
+    const html = waitlistConfirmationTemplate(name, signUpLink, locale);
 
     await this.send(email, subject, html);
   }
@@ -442,10 +451,11 @@ export class EmailService {
     email: string,
     type: string,
     title: string,
-    name?: string,
+    name: string | undefined,
+    locale: Locale,
   ): Promise<void> {
-    const subject = 'Thanks for your feedback!';
-    const html = feedbackConfirmationTemplate(type, title, name);
+    const subject = translate(locale, 'email.feedback.confirmation.subject');
+    const html = feedbackConfirmationTemplate(type, title, name, locale);
 
     await this.send(email, subject, html);
   }
@@ -464,38 +474,23 @@ export class EmailService {
    */
   async sendInvoiceEmail(params: {
     to: string;
-    instructorName: string;
-    amountLabel: string;
-    dueDateLabel: string | null;
+    instructorName: string | null;
+    amountCents: number;
+    currency: string;
+    dueDate: Date | string | null;
     invoiceNumber: string | null;
     hostedInvoiceUrl: string;
     invoicePdfUrl: string | null;
     recipientName?: string | null;
+    locale: Locale;
   }): Promise<void> {
-    const {
-      to,
-      instructorName,
-      amountLabel,
-      dueDateLabel,
-      invoiceNumber,
-      hostedInvoiceUrl,
-      invoicePdfUrl,
-      recipientName,
-    } = params;
+    const { to, locale, ...invoice } = params;
 
-    const subject = invoiceNumber
-      ? `Invoice ${invoiceNumber} from ${instructorName}`
-      : `Invoice from ${instructorName}`;
-
-    const html = invoiceSendTemplate({
-      instructorName,
-      amountLabel,
-      dueDateLabel,
-      invoiceNumber,
-      hostedInvoiceUrl,
-      invoicePdfUrl,
-      recipientName,
+    const subject = translate(locale, 'email.invoice.send.subject', {
+      ref: invoice.invoiceNumber || null,
+      instructor: invoice.instructorName || null,
     });
+    const html = invoiceSendTemplate({ ...invoice, locale });
 
     await this.send(to, subject, html);
   }
@@ -508,33 +503,24 @@ export class EmailService {
    */
   async sendSubscriptionSetupEmail(params: {
     to: string;
-    instructorName: string;
+    instructorName: string | null;
     planName: string;
-    amountLabel: string;
-    cycleLabel: string | null;
+    amountCents: number;
+    currency: string;
+    interval: string | null;
+    intervalCount?: number | null;
     setupUrl: string;
     recipientName?: string | null;
+    locale: Locale;
   }): Promise<void> {
-    const {
-      to,
-      instructorName,
-      planName,
-      amountLabel,
-      cycleLabel,
-      setupUrl,
-      recipientName,
-    } = params;
+    const { to, locale, ...subscription } = params;
     // Subject leans into the consent ask, not "you got a subscription" —
     // the client hasn't gotten anything until they click confirm.
-    const subject = `${instructorName} set up a ${planName} membership — confirm to start`;
-    const html = subscriptionSetupTemplate({
-      instructorName,
-      planName,
-      amountLabel,
-      cycleLabel,
-      setupUrl,
-      recipientName,
+    const subject = translate(locale, 'email.subscription.setup.subject', {
+      instructor: subscription.instructorName || null,
+      plan: subscription.planName,
     });
+    const html = subscriptionSetupTemplate({ ...subscription, locale });
     await this.send(to, subject, html);
   }
 
@@ -549,19 +535,16 @@ export class EmailService {
     otherPartyName: string;
     endedBy: 'self' | 'other';
     recipientRole: 'instructor' | 'client';
+    locale: Locale;
   }): Promise<void> {
-    const { to, recipientName, otherPartyName, endedBy, recipientRole } =
-      params;
-    const subject =
-      endedBy === 'self'
-        ? `You ended your collaboration with ${otherPartyName}`
-        : `${otherPartyName} ended your collaboration`;
-    const html = collaborationEndedTemplate({
-      recipientName,
-      otherPartyName,
-      endedBy,
-      recipientRole,
-    });
+    const { to, ...collaboration } = params;
+    const { recipientRole, endedBy, otherPartyName, locale } = collaboration;
+    const subject = translate(
+      locale,
+      `email.client.collaborationEnded.${recipientRole}.${endedBy}.subject`,
+      { name: otherPartyName },
+    );
+    const html = collaborationEndedTemplate(collaboration);
     await this.send(to, subject, html);
   }
 
@@ -571,8 +554,9 @@ export class EmailService {
 
   /**
    * Generic notification email used by NotificationService when a
-   * notification's email channel is enabled. Renders the same title/body
-   * stored on the in-app row, with an optional CTA link.
+   * notification's email channel is enabled. `title` / `body` arrive
+   * already rendered in the recipient's language; `locale` says which,
+   * so the layout around them matches.
    *
    * Returns a status object so the caller can record per-channel outcome
    * on the notification_receipt row. This differs from other send methods
@@ -583,12 +567,14 @@ export class EmailService {
     to: string;
     title: string;
     body: string;
+    locale: Locale;
     ctaUrl?: string;
     ctaLabel?: string;
   }): Promise<{ ok: true } | { ok: false; reason: string }> {
     const html = genericNotificationTemplate({
       title: params.title,
       body: params.body,
+      locale: params.locale,
       ctaUrl: params.ctaUrl,
       ctaLabel: params.ctaLabel,
     });
@@ -659,22 +645,18 @@ export class EmailService {
     email: string,
     firstName: string | null,
     changedAt: Date,
+    locale: Locale,
+    /** The user's zone, so the time reads as their own clock. */
+    timeZone?: string,
   ): Promise<void> {
-    const changedAtLabel = changedAt.toLocaleString('en-US', {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZoneName: 'short',
-    });
     const resetLink = `${this.frontendUrl}/auth/reset-password`;
-    const subject = 'Your MotionHive password was changed';
+    const subject = translate(locale, 'email.auth.passwordChanged.subject');
     const html = passwordChangedTemplate({
       firstName,
-      changedAtLabel,
+      changedAt,
+      timeZone,
       resetLink,
+      locale,
     });
     await this.send(email, subject, html);
   }
@@ -690,18 +672,24 @@ export class EmailService {
   async sendGroupMemberLeftEmail(params: {
     to: string;
     ownerFirstName: string | null;
-    memberName: string;
+    memberName: string | null;
     groupName: string;
     groupId: string;
+    locale: Locale;
   }): Promise<void> {
-    const { to, ownerFirstName, memberName, groupName, groupId } = params;
+    const { to, ownerFirstName, memberName, groupName, groupId, locale } =
+      params;
     const groupLink = `${this.frontendUrl}/groups/${groupId}`;
-    const subject = `${memberName} left ${groupName}`;
+    const subject = translate(locale, 'email.group.memberLeft.subject', {
+      name: memberName || null,
+      group: groupName,
+    });
     const html = groupMemberLeftTemplate({
       ownerFirstName,
       memberName,
       groupName,
       groupLink,
+      locale,
     });
     await this.send(to, subject, html);
   }
@@ -714,14 +702,18 @@ export class EmailService {
     to: string;
     memberFirstName: string | null;
     groupName: string;
+    locale: Locale;
   }): Promise<void> {
-    const { to, memberFirstName, groupName } = params;
+    const { to, memberFirstName, groupName, locale } = params;
     const groupsListLink = `${this.frontendUrl}/groups`;
-    const subject = `You were removed from ${groupName}`;
+    const subject = translate(locale, 'email.group.memberRemoved.subject', {
+      group: groupName,
+    });
     const html = groupMemberRemovedTemplate({
       memberFirstName,
       groupName,
       groupsListLink,
+      locale,
     });
     await this.send(to, subject, html);
   }
@@ -734,11 +726,12 @@ export class EmailService {
   async sendGroupJoinRequestReceivedEmail(params: {
     to: string;
     ownerFirstName: string | null;
-    requesterName: string;
+    requesterName: string | null;
     groupName: string;
     groupId: string;
     requestId: string;
     message?: string;
+    locale: Locale;
   }): Promise<void> {
     const {
       to,
@@ -748,19 +741,25 @@ export class EmailService {
       groupId,
       requestId,
       message,
+      locale,
     } = params;
     // Join requests live inside the group-detail Members tab; the FE
     // can read ?requestId= and scroll-highlight the row (same pattern
     // as /profile?tab=coaches&requestId= and the instructor
     // pending-requests page).
     const reviewLink = `${this.frontendUrl}/groups/${groupId}/members?requestId=${encodeURIComponent(requestId)}`;
-    const subject = `${requesterName} wants to join ${groupName}`;
+    const subject = translate(
+      locale,
+      'email.group.joinRequestReceived.subject',
+      { name: requesterName || null, group: groupName },
+    );
     const html = groupJoinRequestReceivedTemplate({
       ownerFirstName,
       requesterName,
       groupName,
       reviewLink,
       message,
+      locale,
     });
     await this.send(to, subject, html);
   }
@@ -775,9 +774,10 @@ export class EmailService {
     to: string;
     direction: 'received' | 'transferred';
     recipientFirstName: string | null;
-    otherPartyName: string;
+    otherPartyName: string | null;
     groupName: string;
     groupId: string;
+    locale: Locale;
   }): Promise<void> {
     const {
       to,
@@ -786,18 +786,31 @@ export class EmailService {
       otherPartyName,
       groupName,
       groupId,
+      locale,
     } = params;
     const groupLink = `${this.frontendUrl}/groups/${groupId}`;
     const subject =
       direction === 'received'
-        ? `${otherPartyName} transferred ${groupName} to you`
-        : `You transferred ownership of ${groupName}`;
+        ? translate(
+            locale,
+            'email.group.ownershipTransferred.received.subject',
+            {
+              name: otherPartyName || null,
+              group: groupName,
+            },
+          )
+        : translate(
+            locale,
+            'email.group.ownershipTransferred.transferred.subject',
+            { group: groupName },
+          );
     const html = groupOwnershipTransferredTemplate({
       direction,
       recipientFirstName,
       otherPartyName,
       groupName,
       groupLink,
+      locale,
     });
     await this.send(to, subject, html);
   }
@@ -813,20 +826,24 @@ export class EmailService {
     requesterFirstName: string | null;
     groupName: string;
     groupId: string;
+    locale: Locale;
   }): Promise<void> {
-    const { to, decision, requesterFirstName, groupName, groupId } = params;
+    const { to, decision, requesterFirstName, groupName, groupId, locale } =
+      params;
     const groupLink = `${this.frontendUrl}/groups/${groupId}`;
     const groupsListLink = `${this.frontendUrl}/groups/discover`;
-    const subject =
-      decision === 'approved'
-        ? `You're in — ${groupName} accepted your request`
-        : `Update on your request to join ${groupName}`;
+    const subject = translate(
+      locale,
+      `email.group.joinRequestDecided.${decision}.subject`,
+      { group: groupName },
+    );
     const html = groupJoinRequestDecidedTemplate({
       decision,
       requesterFirstName,
       groupName,
       groupLink,
       groupsListLink,
+      locale,
     });
     await this.send(to, subject, html);
   }
@@ -837,15 +854,24 @@ export class EmailService {
    */
   async sendGroupInvitationDeclinedEmail(
     email: string,
-    inviterName: string,
-    declinerName: string,
+    inviterName: string | null,
+    declinerName: string | null,
     groupName: string,
+    locale: Locale,
   ): Promise<void> {
-    const subject = `${declinerName} declined your invitation to ${groupName}`;
+    const subject = translate(
+      locale,
+      'email.group.invitationDeclined.subject',
+      {
+        name: declinerName || null,
+        group: groupName,
+      },
+    );
     const html = invitationDeclinedTemplate(
       inviterName,
       declinerName,
       groupName,
+      locale,
     );
     await this.send(email, subject, html);
   }
@@ -859,73 +885,32 @@ export class EmailService {
     memberFirstName: string | null;
     groupName: string;
     groupId: string;
-    oldRoleLabel: string;
-    newRoleLabel: string;
+    /** Raw `GroupMemberRole` values; the catalog words them. */
+    oldRole: string;
+    newRole: string;
+    locale: Locale;
   }): Promise<void> {
     const {
       to,
       memberFirstName,
       groupName,
       groupId,
-      oldRoleLabel,
-      newRoleLabel,
+      oldRole,
+      newRole,
+      locale,
     } = params;
     const groupLink = `${this.frontendUrl}/groups/${groupId}`;
-    const subject = `Your role in ${groupName} changed to ${newRoleLabel}`;
+    const subject = translate(locale, 'email.group.roleChanged.subject', {
+      group: groupName,
+      role: newRole,
+    });
     const html = groupRoleChangedTemplate({
       memberFirstName,
       groupName,
-      oldRoleLabel,
-      newRoleLabel,
+      oldRole,
+      newRole,
       groupLink,
-    });
-    await this.send(to, subject, html);
-  }
-
-  // =====================================================
-  // SESSION RESCHEDULE
-  // =====================================================
-
-  /**
-   * Sent to every active participant when an instructor reschedules a
-   * session. Caller iterates participants and calls this once per
-   * recipient. Errors are logged inside `send()` and never thrown.
-   */
-  async sendSessionRescheduledEmail(params: {
-    to: string;
-    participantName: string;
-    sessionTitle: string;
-    instructorName: string;
-    oldScheduledAt: Date | string;
-    newScheduledAt: Date | string;
-    reason?: string;
-  }): Promise<void> {
-    const {
-      to,
-      participantName,
-      sessionTitle,
-      instructorName,
-      oldScheduledAt,
-      newScheduledAt,
-      reason,
-    } = params;
-    const format = (d: Date | string): string =>
-      (typeof d === 'string' ? new Date(d) : d).toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    const subject = `"${sessionTitle}" rescheduled`;
-    const html = sessionRescheduledTemplate({
-      participantName,
-      sessionTitle,
-      instructorName,
-      oldScheduledAtLabel: format(oldScheduledAt),
-      newScheduledAtLabel: format(newScheduledAt),
-      reason,
+      locale,
     });
     await this.send(to, subject, html);
   }

@@ -99,7 +99,7 @@ export class CreateBlogPostDto {
     description: 'Language of the post. Supported values: en, ro',
     enum: ['en', 'ro'],
   })
-  @IsIn(['en', 'ro'], { message: 'language must be one of: en, ro' })
+  @IsIn(['en', 'ro'], { message: 'errors.blog.invalidLanguage' })
   @IsOptional()
   language?: string;
 

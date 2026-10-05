@@ -1,0 +1,214 @@
+{
+  "programs": {
+    "5713e7a1-0000-4000-8000-000000000007": {
+      "name": "Doar cu gantere",
+      "description": "Tot ce e aici se face cu o pereche de gantere și atât. Fără bancă, fără rack, fără aparate. Gândit pentru acasă sau pentru o sală de hotel care are greutăți și cam atât.",
+      "folder": "Rutine MotionHive"
+    },
+    "5713e7a1-0000-4000-8000-000000000006": {
+      "name": "Full body B",
+      "description": "Al doilea antrenament full body, pentru săptămânile în care te antrenezi de trei ori și nu vrei să repeți de fiecare dată aceleași patru exerciții. Flexie din șold, împingere, ramat, stabilizare: aceeași idee ca în prima zi de full body, doar cu alte mișcări. Alternează cele două antrenamente pe parcursul săptămânii.",
+      "folder": "Rutine MotionHive"
+    },
+    "5713e7a1-0000-4000-8000-000000000001": {
+      "name": "Full body pentru început",
+      "description": "Un antrenament complet în patru mișcări: genuflexiune, împingere, tracțiune, stabilizare. Fă-l de două sau trei ori pe săptămână, cu o zi de pauză între ele, și adaugă puțină greutate când și ultima repetare iese cu control.",
+      "folder": "Rutine MotionHive"
+    },
+    "5713e7a1-0000-4000-8000-000000000005": {
+      "name": "Zi de picioare",
+      "description": "Cvadricepși, femurali și fesieri în patru mișcări. Cel mai greu exercițiu primul, apoi exerciții pe un picior, iar la final ceva care nu are nevoie de bară.",
+      "folder": "Rutine MotionHive"
+    },
+    "5713e7a1-0000-4000-8000-000000000010": {
+      "name": "Tren inferior",
+      "description": "Cvadricepși, femurali, fesieri și gambe, la aparate în loc de greutăți libere. Cealaltă jumătate a unui split pe tren superior și tren inferior. Cel mai greu exercițiu primul, apoi izolare pentru mușchii care mai au energie.",
+      "folder": "Rutine MotionHive"
+    },
+    "5713e7a1-0000-4000-8000-000000000002": {
+      "name": "Fără echipament, fără scuze",
+      "description": "Doar greutatea corpului și podeaua. Util când ești pe drum sau în zilele în care drumul până la sală e chiar lucrul care te oprește.",
+      "folder": "Rutine MotionHive"
+    },
+    "5713e7a1-0000-4000-8000-000000000004": {
+      "name": "Zi de tras",
+      "description": "Spate și biceps. Partea de tras dintr-o săptămână împins, tras, picioare. Începe cu tracțiunile la helcometru cât ai încă energie, apoi treci la ramat.",
+      "folder": "Rutine MotionHive"
+    },
+    "5713e7a1-0000-4000-8000-000000000003": {
+      "name": "Zi de împins",
+      "description": "Piept, umeri și triceps. Partea de împins dintr-o săptămână împins, tras, picioare. Combin-o cu Zi de tras și Zi de picioare pentru un split simplu pe trei zile.",
+      "folder": "Rutine MotionHive"
+    },
+    "5713e7a1-0000-4000-8000-000000000008": {
+      "name": "20 de minute",
+      "description": "Trei exerciții, pauze scurte, gata în aproximativ douăzeci de minute. Pentru zilele în care ai sări peste antrenament pentru că nu ai timp de unul complet. Puțin e mereu mai bine decât nimic.",
+      "folder": "Rutine MotionHive"
+    },
+    "5713e7a1-0000-4000-8000-000000000009": {
+      "name": "Tren superior",
+      "description": "Piept, spate, umeri și brațe într-un singur antrenament. Jumătate dintr-un split pe tren superior și tren inferior, cea mai folosită structură de patru zile pe săptămână. Fă-l pe acesta și Tren inferior de câte două ori pe săptămână.",
+      "folder": "Rutine MotionHive"
+    }
+  },
+  "workouts": {
+    "5713e7a1-0001-4000-8000-000000000007": {
+      "name": "Doar cu gantere"
+    },
+    "5713e7a1-0001-4000-8000-000000000006": {
+      "name": "Full body B"
+    },
+    "5713e7a1-0001-4000-8000-000000000001": {
+      "name": "Full body pentru început"
+    },
+    "5713e7a1-0001-4000-8000-000000000005": {
+      "name": "Zi de picioare"
+    },
+    "5713e7a1-0001-4000-8000-000000000010": {
+      "name": "Tren inferior"
+    },
+    "5713e7a1-0001-4000-8000-000000000002": {
+      "name": "Fără echipament, fără scuze"
+    },
+    "5713e7a1-0001-4000-8000-000000000004": {
+      "name": "Zi de tras"
+    },
+    "5713e7a1-0001-4000-8000-000000000003": {
+      "name": "Zi de împins"
+    },
+    "5713e7a1-0001-4000-8000-000000000008": {
+      "name": "20 de minute"
+    },
+    "5713e7a1-0001-4000-8000-000000000009": {
+      "name": "Tren superior"
+    }
+  },
+  "cues": {
+    "5713e7a1-0002-4000-8000-000000000101": {
+      "notes": "Ține greutatea la piept. Coboară drept între picioare, nu cu șoldurile mult în spate."
+    },
+    "5713e7a1-0002-4000-8000-000000000102": {
+      "notes": "Cu cât suprafața e mai înaltă, cu atât e mai ușor. Coboar-o pe măsură ce prinzi forță."
+    },
+    "5713e7a1-0002-4000-8000-000000000103": {
+      "notes": "Spatele drept, coastele jos. Trage spre șolduri, nu spre piept."
+    },
+    "5713e7a1-0002-4000-8000-000000000104": {
+      "notes": "Strânge fesierii. Oprește seria când șoldurile încep să cadă."
+    },
+    "5713e7a1-0002-4000-8000-000000000201": {
+      "notes": "Încet la coborâre, rapid la urcare."
+    },
+    "5713e7a1-0002-4000-8000-000000000202": {
+      "notes": "Merge și blatul din bucătărie. Iar într-o zi proastă, chiar și peretele."
+    },
+    "5713e7a1-0002-4000-8000-000000000203": {
+      "notes": "Numără repetările pe fiecare picior. Fă pași mai scurți dacă te supără genunchii."
+    },
+    "5713e7a1-0002-4000-8000-000000000204": {
+      "notes": "Ține zona lombară lipită de podea tot timpul."
+    },
+    "5713e7a1-0002-4000-8000-000000000205": {
+      "notes": "Încheie aici. Calitatea contează mai mult decât durata."
+    },
+    "5713e7a1-0002-4000-8000-000000000301": {
+      "notes": "Cel mai greu exercițiu primul, cât ai încă energie."
+    },
+    "5713e7a1-0002-4000-8000-000000000302": {
+      "notes": "Împinge pe o linie puțin în fața urechilor, nu în spatele lor."
+    },
+    "5713e7a1-0002-4000-8000-000000000303": {
+      "notes": "Exercițiul de final. Du seriile până aproape de cedare."
+    },
+    "5713e7a1-0002-4000-8000-000000000401": {
+      "notes": "Trage din coate, nu din mâini."
+    },
+    "5713e7a1-0002-4000-8000-000000000402": {
+      "notes": "Controlează greutatea la coborâre. Nu ridica umerii."
+    },
+    "5713e7a1-0002-4000-8000-000000000403": {
+      "notes": "Împinge șoldurile în spate. Oprește-te când simți femuralii, nu zona lombară."
+    },
+    "5713e7a1-0002-4000-8000-000000000501": {
+      "notes": "Urcă până la o greutate cu care ai mai putea face încă două repetări."
+    },
+    "5713e7a1-0002-4000-8000-000000000502": {
+      "notes": "Îndoaie-te din șolduri, nu te lăsa în genuflexiune. Bara rămâne aproape de picioare."
+    },
+    "5713e7a1-0002-4000-8000-000000000503": {
+      "notes": "Repetările sunt pe fiecare picior."
+    },
+    "5713e7a1-0002-4000-8000-000000000504": {
+      "notes": "Împinge din călcâi și fă o pauză sus."
+    },
+    "5713e7a1-0002-4000-8000-000000000601": {
+      "notes": "Fă pasul complet și ține pieptul sus. Repetările sunt pe fiecare picior."
+    },
+    "5713e7a1-0002-4000-8000-000000000602": {
+      "notes": "Contractă abdomenul înainte să împingi, ca să nu se arcuiască zona lombară."
+    },
+    "5713e7a1-0002-4000-8000-000000000603": {
+      "notes": "Sprijină mâna liberă pe o bancă sau pe un scaun. Trage spre șold."
+    },
+    "5713e7a1-0002-4000-8000-000000000604": {
+      "notes": "Mișcă-te încet. Zona lombară rămâne lipită de podea tot timpul."
+    },
+    "5713e7a1-0002-4000-8000-000000000701": {
+      "notes": "Ține câte o ganteră în fiecare mână, pe lângă corp. Pieptul sus, coboară drept între picioare."
+    },
+    "5713e7a1-0002-4000-8000-000000000702": {
+      "notes": "Genunchii ușor îndoiți, îndoaie-te din șolduri. Ține ganterele aproape de picioare la coborâre."
+    },
+    "5713e7a1-0002-4000-8000-000000000703": {
+      "notes": "Împinge ganterele în sus și ușor spre interior, ca să ajungă deasupra pieptului, nu a feței."
+    },
+    "5713e7a1-0002-4000-8000-000000000704": {
+      "notes": "Spatele drept, trage spre șold. Termină o parte, apoi schimbă."
+    },
+    "5713e7a1-0002-4000-8000-000000000705": {
+      "notes": "Strânge fesierii. Oprește seria când șoldurile încep să cadă."
+    },
+    "5713e7a1-0002-4000-8000-000000000801": {
+      "notes": "Păstrează un ritm constant. E un antrenament scurt, nu unul lent."
+    },
+    "5713e7a1-0002-4000-8000-000000000802": {
+      "notes": "Împinge drept deasupra capului. Ritm alert, dar controlat."
+    },
+    "5713e7a1-0002-4000-8000-000000000803": {
+      "notes": "Spatele drept, coastele jos. Treci la seria următoare imediat ce ți-ai recăpătat suflul."
+    },
+    "5713e7a1-0002-4000-8000-000000000901": {
+      "notes": "Cel mai greu exercițiu al zilei. Fă-l cât ai încă energie."
+    },
+    "5713e7a1-0002-4000-8000-000000000902": {
+      "notes": "Trage din coate, nu din mâini."
+    },
+    "5713e7a1-0002-4000-8000-000000000903": {
+      "notes": "Împinge pe o linie puțin în fața urechilor, nu în spatele lor."
+    },
+    "5713e7a1-0002-4000-8000-000000000904": {
+      "notes": "Controlează greutatea la coborâre. Nu ridica umerii."
+    },
+    "5713e7a1-0002-4000-8000-000000000905": {
+      "notes": "Ține coatele lipite de corp. Nu balansa greutatea ca s-o ridici."
+    },
+    "5713e7a1-0002-4000-8000-000000000906": {
+      "notes": "Ține coatele lângă corp, nemișcate. Se mișcă doar antebrațele."
+    },
+    "5713e7a1-0002-4000-8000-000000001001": {
+      "notes": "Tălpile la mijlocul platformei, genunchii pe direcția vârfurilor. Nu bloca genunchii brusc la capăt."
+    },
+    "5713e7a1-0002-4000-8000-000000001002": {
+      "notes": "Umerii pe bancă, bărbia ușor în piept. Strânge puternic fesierii sus."
+    },
+    "5713e7a1-0002-4000-8000-000000001003": {
+      "notes": "Revino încet. Nu lăsa greutățile să cadă."
+    },
+    "5713e7a1-0002-4000-8000-000000001004": {
+      "notes": "Începe cu greutate mică. Nu e cazul să-ți pui genunchiul la încercare."
+    },
+    "5713e7a1-0002-4000-8000-000000001005": {
+      "notes": "Întindere completă jos, contracție completă sus."
+    }
+  }
+}

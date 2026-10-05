@@ -6,6 +6,7 @@ import {
   CreatedAt,
   UpdatedAt,
 } from 'sequelize-typescript';
+import type { ContentTranslations } from '../../../common/i18n';
 
 /**
  * Equipment Entity
@@ -38,6 +39,14 @@ export class Equipment extends Model {
 
   @Column({ type: DataType.SMALLINT, allowNull: false, defaultValue: 0 })
   declare displayOrder: number;
+
+  /**
+   * Other languages of name, on MotionHive's own rows only
+   * (migration 063). Swapped in per reader by ContentLocaleInterceptor;
+   * never accepted from a request.
+   */
+  @Column({ type: DataType.JSONB, allowNull: true })
+  declare translations: ContentTranslations | null;
 
   @CreatedAt declare createdAt: Date;
   @UpdatedAt declare updatedAt: Date;

@@ -88,7 +88,7 @@ describe('NotificationPreferenceService', () => {
       const result = await service.updateCategoriesForUser('user-1', [
         {
           category: NotificationCategory.Coaching,
-          channels: { email: false },
+          channels: { email: false, push: false },
         },
       ]);
 
@@ -129,7 +129,7 @@ describe('NotificationPreferenceService', () => {
       await service.updateCategoriesForUser('user-1', [
         {
           category: NotificationCategory.Sessions,
-          channels: { email: false },
+          channels: { email: false, push: false },
         },
       ]);
 
@@ -138,9 +138,40 @@ describe('NotificationPreferenceService', () => {
         channels: Record<string, boolean>;
       };
       expect(updatedChannels.channels.email).toBe(false);
+      expect(updatedChannels.channels.push).toBe(false);
+      // in_app and sms are not settable here, so an edit must leave
+      // them exactly as they were rather than resetting them.
       expect(updatedChannels.channels.in_app).toBe(true);
-      expect(updatedChannels.channels.push).toBe(true);
       expect(updatedChannels.channels.sms).toBe(false);
+    });
+
+    it('turns push back on without disturbing the other channels', async () => {
+      const reminderUpdate = jest.fn().mockResolvedValue(undefined);
+      prefModel.findAll.mockResolvedValue([
+        {
+          userId: 'user-1',
+          type: NotificationType.SESSION_REMINDER_24H,
+          channels: { in_app: true, email: false, push: false, sms: false },
+          update: reminderUpdate,
+        },
+      ]);
+      prefModel.create.mockImplementation((attrs: object) =>
+        Promise.resolve({ ...attrs, update: jest.fn() }),
+      );
+
+      await service.updateCategoriesForUser('user-1', [
+        {
+          category: NotificationCategory.Sessions,
+          channels: { email: false, push: true },
+        },
+      ]);
+
+      const updated = reminderUpdate.mock.calls[0][0] as {
+        channels: Record<string, boolean>;
+      };
+      expect(updated.channels.push).toBe(true);
+      expect(updated.channels.email).toBe(false);
+      expect(updated.channels.in_app).toBe(true);
     });
 
     it('is a no-op when called with empty updates', async () => {

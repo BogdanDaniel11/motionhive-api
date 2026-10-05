@@ -237,6 +237,69 @@ describe('GroupService', () => {
   // =====================================================================
   // removeMember
   // =====================================================================
+  describe('getById', () => {
+    // The role rides along on the group because the membership row is
+    // already loaded to authorise the read. Without it the client has to
+    // derive the role from the paginated member list, where a moderator
+    // past the first page reads as a non-member and loses their controls.
+    it("returns the caller's role alongside the group", async () => {
+      groupModel.findByPk.mockResolvedValue({
+        toJSON: () => ({ id: 'g-1', name: 'Morning Crew' }),
+      });
+      memberModel.findOne.mockResolvedValue({
+        groupId: 'g-1',
+        userId: 'mod-1',
+        leftAt: null,
+        role: GroupMemberRole.MODERATOR,
+      });
+
+      const result = await service.getById('g-1', 'mod-1');
+
+      expect(result.myRole).toBe(GroupMemberRole.MODERATOR);
+      expect(result.name).toBe('Morning Crew');
+    });
+
+    it('rejects a non-member rather than reporting a null role', async () => {
+      groupModel.findByPk.mockResolvedValue({
+        toJSON: () => ({ id: 'g-1' }),
+      });
+      memberModel.findOne.mockResolvedValue(null);
+
+      await expect(service.getById('g-1', 'stranger')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('asks the database for the member count', async () => {
+      // Every list endpoint attaches this count; the single-group read did
+      // not, so the detail screen showed "0 members" for a group the list it
+      // was opened from had just counted correctly.
+      groupModel.findByPk.mockResolvedValue({
+        toJSON: () => ({ id: 'g-1', memberCount: 4 }),
+      });
+      memberModel.findOne.mockResolvedValue({
+        groupId: 'g-1',
+        userId: 'u-1',
+        leftAt: null,
+        role: GroupMemberRole.MEMBER,
+      });
+
+      const result = await service.getById('g-1', 'u-1');
+
+      expect(result.memberCount).toBe(4);
+      const [, options] = groupModel.findByPk.mock.calls[0];
+      expect(JSON.stringify(options)).toContain('group_member');
+    });
+
+    it('404s on a group that does not exist', async () => {
+      groupModel.findByPk.mockResolvedValue(null);
+
+      await expect(service.getById('nope', 'u-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
   describe('removeMember', () => {
     function activeOwner() {
       return {

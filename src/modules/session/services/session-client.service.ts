@@ -13,6 +13,7 @@ import {
   getOffset,
   PaginatedResponse,
 } from '../../../common/dto/pagination.dto';
+import { apiError } from '../../../common/i18n';
 import { User } from '../../user/entities/user.entity';
 import { Venue } from '../../venue/entities/venue.entity';
 import { SessionInstance } from '../entities/session-instance.entity';
@@ -249,7 +250,7 @@ export class SessionClientService {
         },
       ],
     });
-    if (!instance) throw new NotFoundException('Session not found');
+    if (!instance) throw new NotFoundException(apiError('session.notFound'));
 
     // Look up caller's participant row (if any) — drives both access
     // and meeting-URL inclusion below.
@@ -270,7 +271,7 @@ export class SessionClientService {
     const isOpenFree =
       access === 'OPEN' || access === 'FREE' || access === ('OPEN' as never);
     if (!isOpenFree && !isParticipant) {
-      throw new NotFoundException('Session not found');
+      throw new NotFoundException(apiError('session.notFound'));
     }
 
     const title = instance.titleOverride ?? instance.template.title;
@@ -356,9 +357,7 @@ export class SessionClientService {
     if (!participant) {
       // Could be: not booked, not confirmed, wrong user. Always 403 so
       // we don't leak the difference (existence + confirmation state).
-      throw new ForbiddenException(
-        'Join info available only to confirmed participants.',
-      );
+      throw new ForbiddenException(apiError('session.joinConfirmedOnly'));
     }
 
     const instance = await this.instanceModel.findOne({
@@ -373,7 +372,7 @@ export class SessionClientService {
       attributes: ['id', 'startAt', 'meetingUrlOverride'],
     });
     if (!instance) {
-      throw new NotFoundException('Session not found');
+      throw new NotFoundException(apiError('session.notFound'));
     }
 
     // Effective meeting URL: snapshot if present (the URL the user
@@ -385,7 +384,7 @@ export class SessionClientService {
       null;
 
     if (!meetingUrl) {
-      throw new NotFoundException('Session has no meeting URL');
+      throw new NotFoundException(apiError('session.noMeetingLink'));
     }
 
     const start = instance.startAt.getTime();

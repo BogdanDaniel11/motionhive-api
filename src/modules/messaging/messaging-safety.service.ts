@@ -9,6 +9,7 @@ import {
 import { InjectModel } from '@nestjs/sequelize';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { Op } from 'sequelize';
+import { apiError, ApiErrorBody } from '../../common/i18n';
 import {
   InstructorClient,
   InstructorClientStatus,
@@ -23,13 +24,13 @@ import { UserBlock, UserBlockReason } from './entities/user-block.entity';
  * the caller can distinguish the two semantically different denial
  * shapes:
  *   - 'silentDrop': pretend the send succeeded, do nothing.
- *   - 'forbidden': raise a 403 with a clear reason.
+ *   - 'forbidden': raise a 403 with a clear, translated reason.
  * The 'allowed' branch is the happy path.
  */
 export type CanMessageResult =
   | { kind: 'allowed' }
   | { kind: 'silentDrop'; reason: SilentDropReason }
-  | { kind: 'forbidden'; reason: string };
+  | { kind: 'forbidden'; reason: ApiErrorBody };
 
 export type SilentDropReason = 'BLOCKED_BY_RECIPIENT';
 
@@ -95,7 +96,10 @@ export class MessagingSafetyService {
     } = {},
   ): Promise<CanMessageResult> {
     if (senderId === recipientId) {
-      return { kind: 'forbidden', reason: 'Cannot message yourself.' };
+      return {
+        kind: 'forbidden',
+        reason: apiError('messaging.cannotMessageSelf'),
+      };
     }
 
     // The three checks are independent reads, so they share one round
@@ -114,7 +118,7 @@ export class MessagingSafetyService {
     if (suspended) {
       return {
         kind: 'forbidden',
-        reason: 'Your messaging has been restricted. Contact support.',
+        reason: apiError('messaging.suspended'),
       };
     }
 
@@ -125,8 +129,7 @@ export class MessagingSafetyService {
     if (throttled) {
       return {
         kind: 'forbidden',
-        reason:
-          'New accounts can only message users they already have an active relationship with.',
+        reason: apiError('messaging.newAccountLimited'),
       };
     }
 
@@ -176,17 +179,17 @@ export class MessagingSafetyService {
     reason?: UserBlockReason,
   ): Promise<UserBlock> {
     if (blockerId === blockedId) {
-      throw new BadRequestException('You cannot block yourself.');
+      throw new BadRequestException(apiError('messaging.cannotBlockSelf'));
     }
     const target = await User.findByPk(blockedId, { attributes: ['id'] });
     if (!target) {
-      throw new NotFoundException('User not found.');
+      throw new NotFoundException(apiError('messaging.userNotFound'));
     }
     const existing = await this.userBlockModel.findOne({
       where: { blockerId, blockedId },
     });
     if (existing) {
-      throw new ConflictException('You have already blocked this user.');
+      throw new ConflictException(apiError('messaging.alreadyBlocked'));
     }
     const row = await this.userBlockModel.create({
       blockerId,
@@ -205,7 +208,7 @@ export class MessagingSafetyService {
       where: { blockerId, blockedId },
     });
     if (!row) {
-      throw new NotFoundException('Block not found.');
+      throw new NotFoundException(apiError('messaging.notBlocked'));
     }
     await row.destroy();
     this.logger.log?.(
@@ -246,7 +249,7 @@ export class MessagingSafetyService {
       attributes: ['id'],
     });
     if (!row) {
-      throw new NotFoundException('Conversation not found.');
+      throw new NotFoundException(apiError('messaging.conversationNotFound'));
     }
   }
 

@@ -4,6 +4,11 @@ import { NotificationType } from '../notification/notification.service';
 /**
  * Notification builders for the client (instructor↔client) module.
  *
+ * Copy lives in the catalog (`notifications.client.*` under
+ * src/common/i18n/catalog); builders only say which message and pass
+ * the raw values. A missing name stays `null` here: the message decides
+ * what to say instead, per language.
+ *
  * Click targets:
  *   - Pending requests live at /coaching/pending-requests (instructor)
  *     and /profile (client; has no dedicated page).
@@ -16,12 +21,13 @@ export function clientRequestReceived(
   instructorId: string,
   requesterName: string | null,
 ): NotifyParams {
-  const who = requesterName ?? 'A user';
   return {
     userId: instructorId,
     type: NotificationType.CLIENT_REQUEST_RECEIVED,
-    title: 'New coaching request',
-    body: `${who} would like to work with you.`,
+    message: {
+      key: 'client.requestReceived',
+      params: { name: requesterName },
+    },
     data: { screen: 'coaching/pending-requests' },
   };
 }
@@ -30,26 +36,24 @@ export function clientRequestReceived(
  *
  *  Both directions share this builder because `acceptRequest` handles
  *  CLIENT_TO_INSTRUCTOR and INSTRUCTOR_TO_CLIENT with the same code
- *  path and always notifies request.fromUserId. But the click target
- *  differs by role: a client landing on their coaches tab, an
- *  instructor landing on their clients list.
+ *  path and always notifies request.fromUserId. But the wording and the
+ *  click target differ by role: a client landing on their coaches tab,
+ *  an instructor landing on their clients list.
  */
 export function clientRequestAccepted(
   requesterId: string,
   responderName: string | null,
   requesterIsInstructor = false,
 ): NotifyParams {
-  const who =
-    responderName ?? (requesterIsInstructor ? 'A user' : 'Your instructor');
   return {
     userId: requesterId,
     type: NotificationType.CLIENT_REQUEST_ACCEPTED,
-    title: requesterIsInstructor
-      ? 'Invitation accepted'
-      : 'Coaching request accepted',
-    body: requesterIsInstructor
-      ? `${who} accepted your invitation and is now your client.`
-      : `${who} accepted your coaching request.`,
+    message: {
+      key: requesterIsInstructor
+        ? 'client.invitationAccepted'
+        : 'client.requestAccepted',
+      params: { name: responderName },
+    },
     data: requesterIsInstructor
       ? { screen: 'coaching/clients' }
       : { screen: 'profile', queryParams: { tab: 'coaches' } },
@@ -68,17 +72,15 @@ export function clientRequestDeclined(
   responderName: string | null,
   requesterIsInstructor = false,
 ): NotifyParams {
-  const who =
-    responderName ?? (requesterIsInstructor ? 'The user' : 'The instructor');
   return {
     userId: requesterId,
     type: NotificationType.CLIENT_REQUEST_DECLINED,
-    title: requesterIsInstructor
-      ? 'Invitation declined'
-      : 'Coaching request declined',
-    body: requesterIsInstructor
-      ? `${who} declined your coaching invitation.`
-      : `${who} declined your coaching request.`,
+    message: {
+      key: requesterIsInstructor
+        ? 'client.invitationDeclined'
+        : 'client.requestDeclined',
+      params: { name: responderName },
+    },
     data: requesterIsInstructor
       ? { screen: 'coaching/clients' }
       : { screen: 'profile', queryParams: { tab: 'coaches' } },
@@ -90,12 +92,13 @@ export function clientInvitationReceived(
   inviteeId: string,
   instructorName: string | null,
 ): NotifyParams {
-  const who = inviteeName(instructorName);
   return {
     userId: inviteeId,
     type: NotificationType.CLIENT_INVITATION_RECEIVED,
-    title: 'Coaching invitation',
-    body: `${who} invited you to become their client.`,
+    message: {
+      key: 'client.invitationReceived',
+      params: { name: instructorName },
+    },
     data: { screen: 'profile', queryParams: { tab: 'coaches' } },
   };
 }
@@ -105,16 +108,13 @@ export function clientRelationshipEndedForInstructor(
   instructorId: string,
   clientName: string | null,
 ): NotifyParams {
-  const who = clientName ?? 'A client';
   return {
     userId: instructorId,
     type: NotificationType.CLIENT_RELATIONSHIP_ENDED,
-    title: 'Coaching ended',
-    body: `${who} ended the coaching relationship.`,
+    message: {
+      key: 'client.relationshipEnded',
+      params: { name: clientName },
+    },
     data: { screen: 'coaching/clients' },
   };
-}
-
-function inviteeName(name: string | null): string {
-  return name ?? 'An instructor';
 }

@@ -1,4 +1,4 @@
-import { escapeHtml } from '../../utils/html.utils';
+import type { Locale } from '../../i18n';
 import {
   baseLayout,
   divider,
@@ -8,96 +8,82 @@ import {
   plainTextLayout,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
+
+interface CollaborationEndedParams {
+  recipientName: string | null;
+  otherPartyName: string;
+  endedBy: 'self' | 'other';
+  recipientRole: 'instructor' | 'client';
+  locale: Locale;
+}
 
 /**
  * Sent to BOTH parties when a coaching collaboration ends — either
  * the client leaves the trainer or the trainer archives the client.
- * The `endedBy` flag picks the right copy ("you ended" vs "they
- * ended"). Active subscriptions are NOT auto-cancelled by ending the
+ * Active subscriptions are NOT auto-cancelled by ending the
  * collaboration; we mention that to set the right expectation.
+ *
+ * Four variants, one catalog node each:
+ * `email.client.collaborationEnded.<recipientRole>.<endedBy>` holds
+ * the `subject` (also the preheader and the line under the heading)
+ * and the `body`; the notes that only depend on who is reading sit one
+ * level up, under `<recipientRole>`.
  */
-export function collaborationEndedTemplate(params: {
-  recipientName: string | null;
-  otherPartyName: string;
-  endedBy: 'self' | 'other';
-  recipientRole: 'instructor' | 'client';
-}): string {
-  const { recipientName, otherPartyName, endedBy, recipientRole } = params;
-  const safeOther = escapeHtml(otherPartyName);
-  const greeting = recipientName
-    ? `Hi ${escapeHtml(recipientName)},`
-    : 'Hi there,';
-
-  const headlineText =
-    endedBy === 'self'
-      ? `You ended your collaboration with ${safeOther}`
-      : `${safeOther} ended your collaboration`;
-
-  const bodyText =
-    endedBy === 'self'
-      ? `You ended your coaching collaboration with <strong>${safeOther}</strong> on MotionHive. They no longer appear in your ${recipientRole === 'instructor' ? 'client list' : 'coaches list'}, and they can no longer ${recipientRole === 'instructor' ? 'see your private sessions' : 'invite you to their sessions'}.`
-      : `<strong>${safeOther}</strong> ended your coaching collaboration on MotionHive. They no longer appear in your ${recipientRole === 'instructor' ? 'client list' : 'coaches list'}.`;
-
-  const subscriptionNote =
-    recipientRole === 'client'
-      ? paragraph(
-          'If you have an active membership with this trainer, it remains active until you cancel it from your billing page.',
-        )
-      : paragraph(
-          "Any active memberships this client has with you remain in place until they (or you) cancel them — ending the collaboration doesn't auto-cancel subscriptions.",
-        );
+export function collaborationEndedTemplate(
+  params: CollaborationEndedParams,
+): string {
+  const { recipientName, otherPartyName, endedBy, recipientRole, locale } =
+    params;
+  const c = emailCopy(locale, 'email.client.collaborationEnded');
+  const names = { recipient: recipientName || null, name: otherPartyName };
+  const headline = c.html(`${recipientRole}.${endedBy}.subject`, {
+    name: otherPartyName,
+  });
 
   const content = `
-    ${eyebrow('UPDATE', 'update')}
-    ${heading('Collaboration ended')}
-    ${subheading(headlineText)}
-    ${paragraph(`${greeting} ${bodyText}`)}
-    ${subscriptionNote}
+    ${eyebrow('', 'update', locale)}
+    ${heading(c.html('heading'))}
+    ${subheading(headline)}
+    ${paragraph(c.html(`${recipientRole}.${endedBy}.body`, names))}
+    ${paragraph(c.html(`${recipientRole}.membershipNote`))}
     ${divider()}
-    ${paragraph('You can always reconnect later by sending a new invitation.')}
+    ${paragraph(c.html(`${recipientRole}.reconnect`))}
   `;
 
   return baseLayout(content, {
-    preheader: headlineText,
-    footerNote:
-      "You're receiving this because a coaching collaboration on your MotionHive account changed status.",
+    preheader: headline,
+    footerNote: c.html(`${recipientRole}.footerNote`),
     category: 'update',
+    locale,
   });
 }
 
-export function collaborationEndedTemplateText(params: {
-  recipientName: string | null;
-  otherPartyName: string;
-  endedBy: 'self' | 'other';
-  recipientRole: 'instructor' | 'client';
-}): string {
-  const { recipientName, otherPartyName, endedBy, recipientRole } = params;
-  const greeting = recipientName ? `Hi ${recipientName},` : 'Hi there,';
-  const headlineText =
-    endedBy === 'self'
-      ? `You ended your collaboration with ${otherPartyName}`
-      : `${otherPartyName} ended your collaboration`;
-  const bodyText =
-    endedBy === 'self'
-      ? `You ended your coaching collaboration with ${otherPartyName} on MotionHive. They no longer appear in your ${recipientRole === 'instructor' ? 'client list' : 'coaches list'}, and they can no longer ${recipientRole === 'instructor' ? 'see your private sessions' : 'invite you to their sessions'}.`
-      : `${otherPartyName} ended your coaching collaboration on MotionHive. They no longer appear in your ${recipientRole === 'instructor' ? 'client list' : 'coaches list'}.`;
-  const subscriptionNote =
-    recipientRole === 'client'
-      ? 'If you have an active membership with this trainer, it remains active until you cancel it from your billing page.'
-      : "Any active memberships this client has with you remain in place until they (or you) cancel them — ending the collaboration doesn't auto-cancel subscriptions.";
+export function collaborationEndedTemplateText(
+  params: CollaborationEndedParams,
+): string {
+  const { recipientName, otherPartyName, endedBy, recipientRole, locale } =
+    params;
+  const c = emailCopy(locale, 'email.client.collaborationEnded');
+  const names = { recipient: recipientName || null, name: otherPartyName };
+  const headline = c.text(`${recipientRole}.${endedBy}.subject`, {
+    name: otherPartyName,
+  });
 
   return plainTextLayout({
-    preheader: headlineText,
-    footerNote:
-      "You're receiving this because a coaching collaboration on your MotionHive account changed status.",
+    preheader: headline,
+    footerNote: c.text(`${recipientRole}.footerNote`),
+    locale,
     sections: [
       {
-        heading: 'Collaboration ended',
-        body: [headlineText, `${greeting} ${bodyText}`, subscriptionNote],
+        heading: c.text('heading'),
+        body: [
+          headline,
+          c.text(`${recipientRole}.${endedBy}.body`, names),
+          c.text(`${recipientRole}.membershipNote`),
+        ],
       },
-      {
-        body: ['You can always reconnect later by sending a new invitation.'],
-      },
+      { body: [c.text(`${recipientRole}.reconnect`)] },
     ],
   });
 }

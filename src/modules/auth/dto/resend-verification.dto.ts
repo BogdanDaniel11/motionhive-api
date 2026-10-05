@@ -12,7 +12,7 @@ export class ResendVerificationDto {
     example: 'user@example.com',
     description: 'Email address to resend verification to',
   })
-  @IsEmail()
+  @IsEmail({}, { message: 'errors.validation.invalidEmail' })
   @IsNotEmpty()
   email: string;
 }

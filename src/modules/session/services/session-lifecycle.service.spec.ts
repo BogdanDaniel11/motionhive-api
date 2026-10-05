@@ -17,6 +17,7 @@ import {
   SessionTemplateStatus,
 } from '../entities/session.enums';
 import { makeSilentLogger } from '../../../../test/helpers/sequelize-mocks';
+import { notificationText } from '../../../../test/helpers/notification-text';
 
 const fakeSequelize = () =>
   ({
@@ -225,7 +226,7 @@ describe('SessionLifecycleService', () => {
         message: '<script>x</script>be back next week',
       });
       // Captured by checking the notification payload
-      const payload = notifyService.notify.mock.calls[0][0] as { body: string };
+      const payload = notificationText(notifyService.notify.mock.calls[0][0]);
       expect(payload.body).toContain('sick');
       expect(payload.body).not.toContain('<script>');
     });
@@ -518,7 +519,7 @@ describe('SessionLifecycleService', () => {
         audience: 'all',
         message: "<script>alert('x')</script>Hello",
       });
-      const payload = notifyService.notify.mock.calls[0][0] as { body: string };
+      const payload = notificationText(notifyService.notify.mock.calls[0][0]);
       expect(payload.body).not.toContain('<script>');
       expect(payload.body).toContain('Hello');
     });

@@ -82,8 +82,7 @@ export class CreateVenueDto {
   @IsString()
   @MaxLength(20)
   @Matches(/^[A-Za-z0-9\s\-]{2,20}$/, {
-    message:
-      'postalCode must be 2–20 alphanumerics (spaces and dashes allowed)',
+    message: 'errors.validation.invalidPostalCode',
   })
   postalCode?: string;
 

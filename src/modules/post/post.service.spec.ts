@@ -386,6 +386,47 @@ describe('PostService', () => {
 
   // ─────────────── updatePost ───────────────
 
+  describe('author projection', () => {
+    // Posts hand-pick the author fields rather than passing the row through,
+    // and `handle` was left out — so the same person was a tappable profile
+    // link under a comment and inert above it.
+    it('carries the author handle, the way comments already do', async () => {
+      const authorId = 'user-1';
+      groupModel.findAll.mockResolvedValue([
+        { id: 'g1', memberPostPolicy: MemberPostPolicy.OPEN },
+      ]);
+      memberModel.findAll.mockResolvedValue([
+        { groupId: 'g1', userId: authorId, role: GroupMemberRole.OWNER },
+      ]);
+      postModel.create.mockResolvedValue({ id: 'p1' });
+      postModel.findByPk.mockResolvedValueOnce({
+        id: 'p1',
+        authorId,
+        groupId: 'g1',
+        approvalState: PostApprovalState.APPROVED,
+        content: 'hi',
+        mediaUrls: null,
+        postedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        author: {
+          id: authorId,
+          firstName: 'Anna',
+          lastName: 'Popescu',
+          avatarUrl: null,
+          handle: 'annapopescu',
+        },
+      });
+
+      const result = await service.createPost(authorId, {
+        content: 'hi',
+        groupIds: ['g1'],
+      });
+
+      expect(result.posts[0].author?.handle).toBe('annapopescu');
+    });
+  });
+
   describe('updatePost', () => {
     const authorId = 'user-1';
     const postId = 'post-1';

@@ -11,6 +11,12 @@ import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { Op, Transaction } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 
+import {
+  apiError,
+  toLocale,
+  translatedText,
+  type Locale,
+} from '../../common/i18n';
 import { escapeLikeWildcards } from '../../common/utils/search.utils';
 
 import {
@@ -151,10 +157,10 @@ export class ProgramAssignmentService {
       program.source === ProgramSource.System &&
       program.status === ProgramStatus.Published;
     if (!program || (!isOwnedByCaller && !isSystemStarter)) {
-      throw new NotFoundException('Program not found.');
+      throw new NotFoundException(apiError('workout.programNotFound'));
     }
     if (program.deletedAt) {
-      throw new BadRequestException('Cannot assign a deleted program.');
+      throw new BadRequestException(apiError('workout.cannotAssignDeleted'));
     }
 
     // The client must be in an ACTIVE instructor↔client relationship.
@@ -166,19 +172,25 @@ export class ProgramAssignmentService {
       },
     });
     if (!relationship) {
-      throw new ForbiddenException(
-        'You can only assign programs to your active clients.',
-      );
+      throw new ForbiddenException(apiError('workout.assignActiveClientsOnly'));
     }
 
     // Pull the client display name for the notification (we already
     // have instructorName via the controller).
     const client = await this.userModel.findByPk(dto.clientId, {
-      attributes: ['id', 'firstName', 'lastName'],
+      attributes: ['id', 'firstName', 'lastName', 'language'],
     });
     if (!client) {
-      throw new NotFoundException('Client not found.');
+      throw new NotFoundException(apiError('workout.clientNotFound'));
     }
+    // The assignment is the client's copy of the plan, so a starter's text
+    // is written in the language they train in.
+    const clientLocale = toLocale(client.language);
+    const programName = translatedText(program, 'name', clientLocale);
+
+    // Resolved before the transaction opens: a day-count mismatch is a bad
+    // request and should be refused before anything is written.
+    const dayMap = this.buildDayMap(program.workouts ?? [], dto.daysOfWeek);
 
     const created = await this.sequelize.transaction(async (tx) => {
       const assignment = await this.assignmentModel.create(
@@ -187,17 +199,24 @@ export class ProgramAssignmentService {
           clientId: dto.clientId,
           instructorClientId: relationship.id,
           masterProgramId: program.id,
-          programNameSnapshot: program.name,
+          programNameSnapshot: programName,
           status: ProgramAssignmentStatus.Active,
           startDate: dto.startDate,
-          endDate: this.computeEndDate(program, dto.startDate),
+          endDate: this.computeEndDate(program, dto.startDate, dayMap),
           completionPercent: 0,
           notes: dto.notes?.trim() || null,
         },
         { transaction: tx },
       );
 
-      await this.cloneTree(assignment.id, program, dto.startDate, tx);
+      await this.cloneTree(
+        assignment.id,
+        program,
+        dto.startDate,
+        tx,
+        dayMap,
+        clientLocale,
+      );
       return assignment;
     });
 
@@ -208,7 +227,7 @@ export class ProgramAssignmentService {
         programAssignedForClient({
           clientId: dto.clientId,
           assignmentId: created.id,
-          programName: program.name,
+          programName,
           startDate: dto.startDate,
           instructorName: instructorDisplayName,
         }),
@@ -356,6 +375,7 @@ export class ProgramAssignmentService {
                     'kind',
                     'level',
                     'thumbnailUrl',
+                    'translations',
                   ],
                 },
                 {
@@ -371,10 +391,10 @@ export class ProgramAssignmentService {
       ],
     });
     if (!assignment) {
-      throw new NotFoundException('Assignment not found.');
+      throw new NotFoundException(apiError('workout.assignmentNotFound'));
     }
     if (assignment.instructorId !== userId && assignment.clientId !== userId) {
-      throw new NotFoundException('Assignment not found.');
+      throw new NotFoundException(apiError('workout.assignmentNotFound'));
     }
     return assignment;
   }
@@ -458,20 +478,18 @@ export class ProgramAssignmentService {
 
     // Own it or it doesn't exist, same hide-existence rule as elsewhere.
     if (!program || program.ownerId !== userId) {
-      throw new NotFoundException('Routine not found.');
+      throw new NotFoundException(apiError('workout.routineNotFound'));
     }
     const source = program.workouts?.[0];
     if (!source) {
       throw new BadRequestException(
-        'This routine has no exercises yet, so there is nothing to schedule.',
+        apiError('workout.routineNothingToSchedule'),
       );
     }
 
     const repeatMode = dto.repeatMode ?? ProgramRepeatMode.Weekly;
     if (repeatMode === ProgramRepeatMode.Block && !dto.repeatWeeks) {
-      throw new BadRequestException(
-        'A block schedule needs to know how many weeks it runs for.',
-      );
+      throw new BadRequestException(apiError('workout.blockNeedsWeeks'));
     }
 
     const startDate = dto.startDate ?? today;
@@ -720,12 +738,10 @@ export class ProgramAssignmentService {
       ],
     });
     if (!aw || !aw.assignment || aw.assignment.clientId !== clientId) {
-      throw new NotFoundException('Workout not found.');
+      throw new NotFoundException(apiError('workout.workoutNotFound'));
     }
     if (aw.status === WorkoutLogStatus.Completed) {
-      throw new BadRequestException(
-        "This workout is already complete and can't be skipped.",
-      );
+      throw new BadRequestException(apiError('workout.cannotSkipCompleted'));
     }
     await aw.update({ status: WorkoutLogStatus.Skipped });
     // Bump completion% so the plan progress reflects the skip. SKIPPED
@@ -954,6 +970,9 @@ export class ProgramAssignmentService {
     program: Program,
     startDate: string,
     tx: Transaction,
+    dayMap: Map<number, number> | null | undefined,
+    /** Language a starter's text is copied in; a coach's own is as written. */
+    locale: Locale,
   ): Promise<void> {
     const workouts = program.workouts ?? [];
     if (workouts.length === 0) {
@@ -967,14 +986,19 @@ export class ProgramAssignmentService {
         {
           programAssignmentId: assignmentId,
           masterWorkoutId: pw.id,
-          name: pw.name,
-          notes: pw.notes,
+          name: translatedText(pw, 'name', locale),
+          notes: translatedText(pw, 'notes', locale),
           weekIndex: pw.weekIndex,
-          dayIndex: pw.dayIndex,
+          // The slot the client sees, not the one the program was drawn on.
+          dayIndex: dayMap?.get(pw.dayIndex) ?? pw.dayIndex,
           sequenceNumber: pw.sequenceNumber,
           phase: pw.phase,
           estimatedDurationMinutes: pw.estimatedDurationMinutes,
-          scheduledDate: this.computeScheduledDate(startDate, pw),
+          scheduledDate: this.computeScheduledDate(
+            startDate,
+            pw,
+            dayMap ?? undefined,
+          ),
           status: null,
         },
         { transaction: tx },
@@ -989,7 +1013,7 @@ export class ProgramAssignmentService {
             masterExerciseId: pe.id,
             supersetGroupId: pe.supersetGroupId,
             orderIndex: pe.orderIndex,
-            notes: pe.notes,
+            notes: translatedText(pe, 'notes', locale),
             alternateExerciseId: pe.alternateExerciseId,
             isModifiedFromMaster: false,
           },
@@ -1029,7 +1053,7 @@ export class ProgramAssignmentService {
   ): Promise<ProgramAssignment> {
     const assignment = await this.assignmentModel.findByPk(id);
     if (!assignment || assignment.instructorId !== instructorId) {
-      throw new NotFoundException('Assignment not found.');
+      throw new NotFoundException(apiError('workout.assignmentNotFound'));
     }
     return assignment;
   }
@@ -1039,14 +1063,85 @@ export class ProgramAssignmentService {
    * day per (week*7 + day). We keep the math in pure string-date
    * space so timezone is not a concern (`DATEONLY` storage).
    */
-  private computeScheduledDate(startDate: string, pw: ProgramWorkout): string {
-    const dayOffset = pw.weekIndex * 7 + pw.dayIndex;
-    return this.addDays(startDate, dayOffset);
+  private computeScheduledDate(
+    startDate: string,
+    pw: ProgramWorkout,
+    dayMap?: ReadonlyMap<number, number>,
+  ): string {
+    // Without a mapping, days land by counting forward from the start —
+    // the original behaviour, kept for every assignment that does not ask
+    // for anything else.
+    if (!dayMap) {
+      return this.addDays(startDate, pw.weekIndex * 7 + pw.dayIndex);
+    }
+
+    // With one, the program's day slot names a weekday instead. Week 0 is
+    // the week containing `startDate`, so its Monday anchors the grid the
+    // same way `_expandWeekdays` does.
+    const targetDayIndex = dayMap.get(pw.dayIndex);
+    if (targetDayIndex === undefined) {
+      return this.addDays(startDate, pw.weekIndex * 7 + pw.dayIndex);
+    }
+    const daysSinceMonday = this._isoWeekdayToDayIndex(startDate);
+    const mondayOfStartWeek = this.addDays(startDate, -daysSinceMonday);
+    return this.addDays(mondayOfStartWeek, pw.weekIndex * 7 + targetDayIndex);
   }
 
-  private computeEndDate(program: Program, startDate: string): string | null {
+  /**
+   * Maps a program's own day slots onto the weekdays a coach picked.
+   *
+   * The program's distinct days, in order, pair with `daysOfWeek` in order:
+   * a Mon/Wed/Fri program assigned to Tue/Thu/Sat keeps its shape and moves
+   * wholesale. Returns null when nothing was asked for.
+   *
+   * The counts must match. Folding three training days into two would have
+   * to drop or double up a day, and either choice is one the coach should
+   * make rather than discover.
+   */
+  private buildDayMap(
+    workouts: ProgramWorkout[],
+    daysOfWeek?: number[],
+  ): Map<number, number> | null {
+    if (!daysOfWeek?.length) return null;
+
+    const programDays = [...new Set(workouts.map((w) => w.dayIndex))].sort(
+      (a, b) => a - b,
+    );
+    const chosen = [...new Set(daysOfWeek)].sort((a, b) => a - b);
+
+    if (chosen.length !== programDays.length) {
+      throw new BadRequestException(
+        apiError('workout.pickTrainingDays', { count: programDays.length }),
+      );
+    }
+
+    // ISO 1=Mon..7=Sun on the way in; `dayIndex` is 0=Mon..6=Sun.
+    return new Map(programDays.map((d, i) => [d, chosen[i] - 1]));
+  }
+
+  private computeEndDate(
+    program: Program,
+    startDate: string,
+    dayMap?: Map<number, number> | null,
+  ): string | null {
+    // The work decides the window. Counting `durationDays` forward instead
+    // would end the plan before its own last session whenever the declared
+    // length disagrees with the weeks that actually hold workouts — the
+    // client would still have those sessions scheduled past their end date.
+    const workouts = program.workouts ?? [];
+    if (workouts.length) {
+      const last = workouts
+        .map((pw) =>
+          this.computeScheduledDate(startDate, pw, dayMap ?? undefined),
+        )
+        .sort()
+        .at(-1);
+      if (last) return last;
+    }
+
+    // Nothing built yet: fall back to the declared length so a shell
+    // program assigned early still has a window.
     if (!program.durationDays) return null;
-    // End on the final day of the program.
     return this.addDays(startDate, program.durationDays - 1);
   }
 
@@ -1073,7 +1168,7 @@ export class ProgramAssignmentService {
     ];
     if (terminal.includes(current)) {
       throw new BadRequestException(
-        `Cannot transition out of a ${current} assignment.`,
+        apiError('workout.assignmentClosed', { status: current }),
       );
     }
   }

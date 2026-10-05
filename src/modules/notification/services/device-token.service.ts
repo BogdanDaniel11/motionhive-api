@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
+import { apiError } from '../../../common/i18n';
 import { DevicePlatform, DeviceToken } from '../entities/device-token.entity';
 
 /**
@@ -104,7 +105,7 @@ export class DeviceTokenService {
     });
     if (!device) {
       // 404, not 403 — don't leak existence of other users' devices.
-      throw new NotFoundException('Device not found');
+      throw new NotFoundException(apiError('notification.deviceNotFound'));
     }
     if (!device.revokedAt) {
       device.revokedAt = new Date();

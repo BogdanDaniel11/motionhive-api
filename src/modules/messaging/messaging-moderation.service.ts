@@ -10,6 +10,7 @@ import { InjectModel } from '@nestjs/sequelize';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { Op } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
+import { apiError } from '../../common/i18n';
 import {
   buildPaginatedResponse,
   PaginatedResponse,
@@ -99,9 +100,7 @@ export class MessagingModerationService {
     },
   ): Promise<MessageReport> {
     if (!dto.messageId && !dto.conversationId) {
-      throw new BadRequestException(
-        'Either messageId or conversationId is required.',
-      );
+      throw new BadRequestException(apiError('messaging.reportTargetRequired'));
     }
 
     const target = await this.resolveReportTarget(
@@ -111,7 +110,7 @@ export class MessagingModerationService {
     );
 
     if (target.reportedUserId === reporterId) {
-      throw new BadRequestException('You cannot report your own messages.');
+      throw new BadRequestException(apiError('messaging.cannotReportSelf'));
     }
 
     const existingOpen = await this.reportModel.findOne({
@@ -128,9 +127,7 @@ export class MessagingModerationService {
       attributes: ['id'],
     });
     if (existingOpen) {
-      throw new ConflictException(
-        'You already have an open report against this user. Our team will review it.',
-      );
+      throw new ConflictException(apiError('messaging.reportAlreadyOpen'));
     }
 
     const report = await this.reportModel.create({
@@ -489,10 +486,12 @@ export class MessagingModerationService {
         attributes: ['id', 'senderId', 'conversationId'],
       });
       if (!message) {
-        throw new NotFoundException('Message not found.');
+        throw new NotFoundException(apiError('messaging.messageNotFound'));
       }
       if (!message.senderId) {
-        throw new BadRequestException('Cannot report a system message.');
+        throw new BadRequestException(
+          apiError('messaging.cannotReportSystemMessage'),
+        );
       }
       // Authorization gate — reporter must be in the conversation.
       // 404 (not 403) so we don't leak "this conversation exists but
@@ -519,7 +518,7 @@ export class MessagingModerationService {
       },
     );
     if (!conversation) {
-      throw new NotFoundException('Conversation not found.');
+      throw new NotFoundException(apiError('messaging.conversationNotFound'));
     }
     // Same gate as the messageId path: the reporter must actually
     // belong to this conversation. We check against the eagerly-
@@ -528,20 +527,18 @@ export class MessagingModerationService {
       (p) => p.userId === reporterId && !p.leftAt,
     );
     if (!reporterParticipant) {
-      throw new NotFoundException('Conversation not found.');
+      throw new NotFoundException(apiError('messaging.conversationNotFound'));
     }
     if (conversation.type !== ConversationType.DIRECT) {
       throw new BadRequestException(
-        'For group conversations, please report a specific message.',
+        apiError('messaging.reportSpecificMessage'),
       );
     }
     const otherUserId = conversation.participants.find(
       (p) => p.userId !== reporterId && !p.leftAt,
     )?.userId;
     if (!otherUserId) {
-      throw new BadRequestException(
-        'Cannot resolve the reported user from this conversation.',
-      );
+      throw new BadRequestException(apiError('messaging.reportTargetUnclear'));
     }
     return {
       reportedUserId: otherUserId,
@@ -564,7 +561,7 @@ export class MessagingModerationService {
       attributes: ['id'],
     });
     if (!row) {
-      throw new NotFoundException('Conversation not found.');
+      throw new NotFoundException(apiError('messaging.conversationNotFound'));
     }
   }
 }

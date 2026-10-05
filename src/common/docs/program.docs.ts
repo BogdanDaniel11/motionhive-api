@@ -186,6 +186,36 @@ export const ProgramDocs = {
       'client never has to walk the tree with one request per row, which ' +
       'was both slow and not atomic.',
   },
+  copyDay: {
+    summary:
+      "Copy one day's training into the same day of other weeks (atomic)",
+    description:
+      'INSTRUCTOR only. Copies the workout at `fromWeekIndex`/`dayIndex` — ' +
+      'with its exercises and prescribed sets — into that same day slot in ' +
+      'every week listed in `toWeekIndexes`, in ONE transaction. Whatever ' +
+      'occupies a target slot is removed first, matching `copy-week`, so a ' +
+      'repeated copy replaces rather than duplicates. The day slot never ' +
+      'moves: copying Monday onto a Thursday reorders the week and is a ' +
+      'different operation.',
+  },
+  repeatWeeks: {
+    summary: 'Repeat the built weeks into the empty weeks after them (atomic)',
+    description:
+      'INSTRUCTOR only. Takes every week up to the last one holding work as ' +
+      'a block and cycles it through the remaining weeks of the declared ' +
+      'length, in ONE transaction. Only weeks past the block are written, so ' +
+      'nothing is replaced and a repeat call is a no-op. Returns the program ' +
+      'with its full tree. 400 when the program has no length or no work.',
+  },
+  deleteWeek: {
+    summary: 'Delete one week and move the later weeks up (atomic)',
+    description:
+      'INSTRUCTOR only. Removes every workout in `weekIndex` (0-based), ' +
+      'shifts each later week up by one, and shortens a declared length by ' +
+      'one week, in ONE transaction. Returns the program with its full ' +
+      'tree. 409 while clients are assigned and the week holds work; 400 ' +
+      'for the only remaining week.',
+  },
   reorderWorkouts: {
     summary: 'Reposition workouts on the program calendar (atomic)',
     description:

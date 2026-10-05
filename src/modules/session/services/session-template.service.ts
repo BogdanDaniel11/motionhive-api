@@ -16,6 +16,7 @@ import {
 } from '../../../common/dto/pagination.dto';
 import { detectMeetingProvider } from '../../../common/utils/meeting-provider.util';
 import { stripHtml } from '../../../common/utils/text.utils';
+import { apiError } from '../../../common/i18n';
 import { SearchIndexService } from '../../search/search-index.service';
 import { VenueService } from '../../venue/venue.service';
 import { Venue } from '../../venue/entities/venue.entity';
@@ -58,15 +59,13 @@ const SKEW_TOLERANCE_MS = 5 * 60_000;
 
 function validateTimezone(tz: string): void {
   if (!TIMEZONE_VALUES.has(tz)) {
-    throw new BadRequestException(`Invalid timezone: ${tz}`);
+    throw new BadRequestException(apiError('session.invalidTimezone'));
   }
 }
 
 function assertNotPast(value: Date): void {
   if (value.getTime() < Date.now() - SKEW_TOLERANCE_MS) {
-    throw new BadRequestException(
-      'firstStartAt must be a future date (5-minute past tolerance).',
-    );
+    throw new BadRequestException(apiError('session.startInPast'));
   }
 }
 
@@ -122,7 +121,7 @@ export class SessionTemplateService {
     // but sanitization can change byte length, so re-clamp here.
     const safeTitle = stripHtml(dto.title, TITLE_MAX);
     if (!safeTitle) {
-      throw new BadRequestException('title cannot be empty after sanitization');
+      throw new BadRequestException(apiError('session.titleRequired'));
     }
     const safeDescription = dto.description
       ? stripHtml(dto.description, DESCRIPTION_MAX) || null
@@ -301,7 +300,7 @@ export class SessionTemplateService {
         },
       ],
     });
-    if (!template) throw new NotFoundException('Session template not found');
+    if (!template) throw new NotFoundException(apiError('session.notFound'));
     return template;
   }
 
@@ -328,9 +327,7 @@ export class SessionTemplateService {
     if (dto.title !== undefined) {
       const safe = stripHtml(dto.title, TITLE_MAX);
       if (!safe) {
-        throw new BadRequestException(
-          'title cannot be empty after sanitization',
-        );
+        throw new BadRequestException(apiError('session.titleRequired'));
       }
       updates.title = safe;
     }
@@ -452,7 +449,7 @@ export class SessionTemplateService {
     const template = await this.getById(instructorId, templateId);
 
     if (!template.isRecurring || !template.recurrenceRule) {
-      throw new BadRequestException('Template is not recurring');
+      throw new BadRequestException(apiError('session.notRecurring'));
     }
 
     const sequelize = this.templateModel.sequelize!;

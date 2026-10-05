@@ -1,5 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsEmail,
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
+import { SUPPORTED_LOCALES } from '../../../common/i18n';
+import type { Locale } from '../../../common/i18n';
 import { IsStrongPassword } from '../../../common/validators/strong-password.validator';
 
 export class CreateUserDto {
@@ -33,4 +41,14 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @ApiPropertyOptional({
+    example: 'ro',
+    enum: SUPPORTED_LOCALES,
+    description:
+      'Language the person is using the app in. Stored on the account so notifications and emails match. Defaults to English.',
+  })
+  @IsIn(SUPPORTED_LOCALES)
+  @IsOptional()
+  language?: Locale;
 }

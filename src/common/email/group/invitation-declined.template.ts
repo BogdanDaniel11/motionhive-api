@@ -1,4 +1,4 @@
-import { escapeHtml } from '../../utils/html.utils';
+import type { Locale } from '../../i18n';
 import {
   baseLayout,
   eyebrow,
@@ -8,6 +8,7 @@ import {
   securityNote,
   subheading,
 } from '../_layouts/base-layout';
+import { emailCopy } from '../_layouts/copy';
 
 /**
  * Sent to a group inviter when the recipient declines the invitation.
@@ -16,43 +17,55 @@ import {
  *
  * No CTA — there's nothing useful to do here. The inviter can still
  * invite someone else from the group page on their own time.
+ *
+ * `inviterName` and `declinerName` may be `null` when the caller could
+ * not resolve them; the copy words that case itself.
  */
 export function invitationDeclinedTemplate(
-  inviterName: string,
-  declinerName: string,
+  inviterName: string | null,
+  declinerName: string | null,
   groupName: string,
+  locale: Locale,
 ): string {
-  const safeInviter = escapeHtml(inviterName);
-  const safeDecliner = escapeHtml(declinerName);
-  const safeGroup = escapeHtml(groupName);
+  const c = emailCopy(locale, 'email.group.invitationDeclined');
+  const name = declinerName || null;
 
   const content = `
-    ${eyebrow('UPDATE', 'update')}
-    ${heading('Invitation declined')}
-    ${subheading(`Heads up — your invitation wasn't accepted`)}
-    ${paragraph(`Hi ${safeInviter}, <strong>${safeDecliner}</strong> declined your invitation to join <strong>${safeGroup}</strong>.`)}
-    ${securityNote('You can always invite someone else from the group settings whenever you want.')}
+    ${eyebrow('', 'update', locale)}
+    ${heading(c.html('heading'))}
+    ${subheading(c.html('subheading'))}
+    ${paragraph(c.html('body', { firstName: inviterName || null, name, group: groupName }))}
+    ${securityNote(c.html('note'))}
   `;
 
   return baseLayout(content, {
-    preheader: `${declinerName} declined your invitation to ${groupName}`,
+    preheader: c.html('preheader', { name, group: groupName }),
     category: 'update',
+    locale,
   });
 }
 
 export function invitationDeclinedTemplateText(
-  inviterName: string,
-  declinerName: string,
+  inviterName: string | null,
+  declinerName: string | null,
   groupName: string,
+  locale: Locale,
 ): string {
+  const c = emailCopy(locale, 'email.group.invitationDeclined');
+  const name = declinerName || null;
   return plainTextLayout({
-    preheader: `${declinerName} declined your invitation to ${groupName}`,
+    preheader: c.text('preheader', { name, group: groupName }),
+    locale,
     sections: [
       {
-        heading: 'Invitation declined',
+        heading: c.text('heading'),
         body: [
-          `Hi ${inviterName}, ${declinerName} declined your invitation to join ${groupName}.`,
-          'You can always invite someone else from the group settings whenever you want.',
+          c.text('body', {
+            firstName: inviterName || null,
+            name,
+            group: groupName,
+          }),
+          c.text('note'),
         ],
       },
     ],
