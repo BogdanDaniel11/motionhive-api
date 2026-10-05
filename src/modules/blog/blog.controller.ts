@@ -59,7 +59,7 @@ export class BlogController {
   @Get('sitemap.xml')
   async sitemap(@Res() res: Response) {
     const xml = await this.blogService.getSitemapXml();
-    res.setHeader('Content-Type', 'application/xml');
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=3600');
     res.send(xml);
   }
